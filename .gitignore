@@ -1,0 +1,29 @@
+# OS
+.DS_Store
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+.env.local
+
+# Project Specific Log Files and Temporary Dirs
+system.log
+temp/
+backend/reports/*.md
+
+# Editor
+.vscode/
+.idea/
