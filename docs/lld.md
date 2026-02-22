@@ -1411,3 +1411,115 @@ ls -la reports/
 # Read the generated report
 cat reports/*.md
 ```
+
+---
+
+## 10. Phase 2 (Backend V2) Extensions
+
+This section details the Low-Level Design for the Phase 2 production extensions, transitioning the system from a sequential, in-memory MVP to a distributed, queued architecture.
+
+### 10.1 Redis Deduplication (`src/services/RedisDedupService.ts`)
+
+Replaces `InMemoryDedupService` to allow cross-process deduplication and persistence across restarts.
+
+**Dependencies:** `ioredis`
+
+```typescript
+import { Redis } from "ioredis";
+import type { IDedupService } from "./DedupService.js";
+
+export class RedisDedupService implements IDedupService {
+  private redis: Redis;
+  private dedupTtlSeconds: number;
+
+  constructor(ttlMs: number, redisUrl: string) {
+    // ... initializes ioredis connection
+  }
+
+  isDuplicate(raw: string): Promise<boolean> {
+    // Uses Redis SET NX EX (Set if Not Exists with Expiry)
+    // Returns true if key exists, false if successfully set
+  }
+
+  private computeHash(raw: string): string {
+    // Same SHA-256 logic as MVP
+  }
+}
+```
+
+### 10.2 Queue System (`src/queue/AnalysisQueue.ts`)
+
+Replaces the synchronous agent invocation in the Orchestrator with a BullMQ queue.
+
+**Dependencies:** `bullmq`, `ioredis`
+
+```typescript
+import { Queue, Worker } from "bullmq";
+
+export class AnalysisQueue {
+  private queue: Queue;
+  private worker: Worker;
+
+  constructor(config: AppConfig, agentClient: IAgentClient) {
+    // Initializes queue "error-analysis-queue"
+    // Initializes worker with concurrency: 2
+  }
+
+  async add(errorBlock: ErrorBlock): Promise<void> {
+    // Pushes error block to BullMQ with retry policies
+  }
+
+  private async processJob(errorBlock: ErrorBlock): Promise<AnalysisResult> {
+    // Moves the execution of `agentClient.parse()`, `agentClient.debug()`, 
+    // and `reportGenerator.generate()` into the background job worker.
+    // Emits EventBus events upon completion.
+  }
+}
+```
+
+### 10.3 HTTP Agent Client (`src/agents/HttpAgentClient.ts`)
+
+Replaces `SubprocessAgentClient` to communicate with the FastAPI microservice instead of spawning CLI processes.
+
+```typescript
+import type { IAgentClient } from "./IAgentClient.js";
+
+export class HttpAgentClient implements IAgentClient {
+  private baseUrl: string; // e.g., http://localhost:8000
+
+  async parse(rawBlock: string, contextLines: string[]): Promise<ParsedError> {
+    // POST /api/parse
+  }
+
+  async debug(parsedError: ParsedError): Promise<Diagnosis> {
+    // POST /api/debug
+  }
+}
+```
+
+### 10.4 FastAPI Agent Server (`src/agents/crewai-service/api.py`)
+
+A Python microservice wrapping the CrewAI orchestration.
+
+**Dependencies:** `fastapi`, `uvicorn`, `pydantic`
+
+**Endpoints:**
+- `POST /api/parse`: Accepts raw error and context, returns JSON `ParsedError`.
+- `POST /api/debug`: Accepts `ParsedError`, returns JSON `Diagnosis`.
+
+### 10.5 Adapter Registry (`src/tailer/AdapterRegistry.ts`)
+
+A factory pattern to instantiate various input sources.
+
+```typescript
+export interface ILogSource {
+  start(): Promise<void>;
+  stop(): void;
+}
+
+export class AdapterRegistry {
+  static createSources(config: AppConfig): ILogSource[] {
+    // Reads config and instantiates LogTailer, DockerTailer, etc.
+  }
+}
+```
