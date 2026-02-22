@@ -14,16 +14,18 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "bullmq": "^5.70.0",
     "dotenv": "^16.4.0",
+    "ioredis": "^5.9.3",
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "eslint": "^9.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0",
-    "eslint": "^9.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0"
+    "vitest": "^2.0.0"
   }
 }

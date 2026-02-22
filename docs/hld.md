@@ -20,8 +20,8 @@ graph TB
         LOG["Logger (Pino)"]
     end
 
-    subgraph "Python Sidecar"
-        CS["CrewAI Service"]
+    subgraph "Python Microservice (alaa-ai-service)"
+        CS["FastAPI Server"]
         PA["Parser Agent"]
         DA["Debugger Agent"]
     end
@@ -46,7 +46,7 @@ graph TB
     OR --> DS
     DS -->|not duplicate| OR
     OR --> AC
-    AC -->|HTTP / subprocess| CS
+    AC -->|HTTP POST| CS
     CS --> PA
     PA --> DA
     DA -->|JSON result| AC
@@ -174,13 +174,7 @@ flowchart TD
 Implements the `IAgentClient` interface to adapt between the Node.js orchestrator and the Python CrewAI service. Using an interface allows swapping to HTTP/gRPC later without changing Orchestrator logic.
 
 #### Subprocess Mode (MVP)
-
-```
-1. Spawn: python3 src/agents/crewai-service/main.py
-2. Write JSON to stdin: { "action": "parse" | "debug", "payload": {...} }
-3. Read JSON from stdout
-4. Timeout: 60 seconds → kill process & return error
-```
+*Deprecated in Phase 8. Replaced by FastApi microservice.*
 
 #### HTTP Mode (Phase 2)
 
@@ -201,9 +195,9 @@ GET  /api/health  → { status: "ok" }
 
 ---
 
-### 2.6 CrewAI Service (`src/agents/crewai-service/`)
+### 2.6 CrewAI Service (`alaa-ai-service/`)
 
-Python sidecar implementing the multi-agent AI pipeline.
+Standalone Python FastAPI microservice implementing the multi-agent AI pipeline.
 
 #### Agent Definitions
 

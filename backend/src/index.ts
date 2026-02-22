@@ -1,10 +1,12 @@
 import { loadConfig } from "./config/index.js";
 import { createLogger } from "./utils/logger.js";
 import { EventBus } from "./events/EventBus.js";
-import { LogTailer } from "./tailer/LogTailer.js";
+import { AdapterRegistry } from "./tailer/AdapterRegistry.js";
 import { Orchestrator } from "./orchestrator/Orchestrator.js";
+import { AnalysisQueue } from "./queue/AnalysisQueue.js";
 import { SubprocessAgentClient } from "./agents/SubprocessAgentClient.js";
-import { InMemoryDedupService } from "./services/DedupService.js";
+import { HttpAgentClient } from "./agents/HttpAgentClient.js";
+import { RedisDedupService } from "./services/RedisDedupService.js";
 
 async function main(): Promise<void> {
   // 1. Load config
@@ -16,14 +18,23 @@ async function main(): Promise<void> {
   logger.info({ config: { ...config } }, "Configuration loaded");
 
   // 3. Initialize modules
-  const tailer = new LogTailer(config);
-  const agentClient = new SubprocessAgentClient(config);
-  const dedupService = new InMemoryDedupService(config.dedupTtlMs);
-  const orchestrator = new Orchestrator(config, agentClient, dedupService);
+  const registry = new AdapterRegistry(config);
+
+  const agentClient =
+    config.crewaiMode === "http"
+      ? new HttpAgentClient(config)
+      : new SubprocessAgentClient(config);
+
+  const dedupService = new RedisDedupService(
+    config.dedupTtlMs,
+    config.redisUrl,
+  );
+  const queue = new AnalysisQueue(config, agentClient);
+  const orchestrator = new Orchestrator(config, queue, dedupService);
 
   // 4. Start pipeline
   orchestrator.start();
-  await tailer.start();
+  await registry.startAll();
 
   logger.info("✅ ALAA is running. Watching for errors...");
 
@@ -31,8 +42,8 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutdown signal received");
 
-    tailer.stop();
-    orchestrator.stop();
+    await registry.stopAll();
+    await orchestrator.stop();
     EventBus.getInstance().removeAllListeners();
 
     logger.info("Shutdown complete. Goodbye.");

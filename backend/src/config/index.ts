@@ -10,12 +10,13 @@ export function loadConfig(): AppConfig {
     logFilePath: path.resolve(process.env.LOG_FILE_PATH ?? "./system.log"),
     reportDir: path.resolve(process.env.REPORT_DIR ?? "./reports"),
     dedupTtlMs: parseInt(process.env.DEDUP_TTL_MS ?? "300000", 10),
-    crewaiMode:
-      (process.env.CREWAI_MODE as "subprocess" | "http") ?? "subprocess",
+    crewaiMode: (process.env.CREWAI_MODE as "subprocess" | "http") ?? "http",
     crewaiHost: process.env.CREWAI_HOST ?? "http://localhost:8000",
-    ollamaModel: process.env.OLLAMA_MODEL ?? "llama3",
-    ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+    llmModel: process.env.LLM_MODEL ?? "ollama/llama3",
+    llmBaseUrl: process.env.LLM_BASE_URL ?? "http://localhost:11434",
     logLevel: process.env.LOG_LEVEL ?? "info",
+    redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+    agentTimeoutMs: parseInt(process.env.AGENT_TIMEOUT_MS ?? "60000", 10),
   };
 
   validate(config);
@@ -41,5 +42,10 @@ function validate(config: AppConfig): void {
   // Validate CrewAI mode
   if (!["subprocess", "http"].includes(config.crewaiMode)) {
     throw new Error(`Invalid CREWAI_MODE: ${config.crewaiMode}`);
+  }
+
+  // Validate agent timeout
+  if (isNaN(config.agentTimeoutMs) || config.agentTimeoutMs < 1000) {
+    throw new Error(`Invalid AGENT_TIMEOUT_MS: ${config.agentTimeoutMs}`);
   }
 }

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: alaa-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  alaa-ai-service:
+    build:
+      context: ./alaa-ai-service
+      dockerfile: Dockerfile
+    container_name: alaa-ai-service
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./alaa-ai-service:/app
+    environment:
+      - HOST=0.0.0.0
+
+volumes:
+  redis_data:

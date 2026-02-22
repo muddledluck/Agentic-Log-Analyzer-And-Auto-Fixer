@@ -34,21 +34,21 @@ describe("Config Module", () => {
     expect(config.logFilePath).toBe(path.resolve(tmpLogFile));
     expect(config.dedupTtlMs).toBe(300000);
     expect(config.crewaiMode).toBe("subprocess");
-    expect(config.ollamaModel).toBe("llama3");
-    expect(config.ollamaBaseUrl).toBe("http://localhost:11434");
+    expect(config.llmModel).toBe("ollama/llama3");
+    expect(config.llmBaseUrl).toBe("http://localhost:11434");
     expect(config.logLevel).toBe("info");
   });
 
   it("should respect custom env vars", async () => {
     process.env.DEDUP_TTL_MS = "60000";
-    process.env.OLLAMA_MODEL = "codellama";
+    process.env.LLM_MODEL = "codellama";
     process.env.LOG_LEVEL = "debug";
 
     const { loadConfig } = await import("../config/index.js");
     const config = loadConfig();
 
     expect(config.dedupTtlMs).toBe(60000);
-    expect(config.ollamaModel).toBe("codellama");
+    expect(config.llmModel).toBe("codellama");
     expect(config.logLevel).toBe("debug");
   });
 

@@ -4,7 +4,7 @@ import { getLogger } from "../utils/logger.js";
 import type { AppConfig, ParsedError, Diagnosis } from "../types/index.js";
 import type { IAgentClient } from "./IAgentClient.js";
 
-const CREWAI_SCRIPT = path.resolve("src/agents/crewai-service/main.py");
+const CREWAI_SCRIPT = path.resolve("../alaa-ai-service/main.py");
 const TIMEOUT_MS = 60_000;
 
 interface AgentRequest {
@@ -44,8 +44,8 @@ export class SubprocessAgentClient implements IAgentClient {
       action: "parse",
       payload: { rawBlock, contextLines },
       config: {
-        model: this.config.ollamaModel,
-        baseUrl: this.config.ollamaBaseUrl,
+        model: this.config.llmModel,
+        baseUrl: this.config.llmBaseUrl,
       },
     };
 
@@ -62,8 +62,8 @@ export class SubprocessAgentClient implements IAgentClient {
       action: "debug",
       payload: { parsedError },
       config: {
-        model: this.config.ollamaModel,
-        baseUrl: this.config.ollamaBaseUrl,
+        model: this.config.llmModel,
+        baseUrl: this.config.llmBaseUrl,
       },
     };
 

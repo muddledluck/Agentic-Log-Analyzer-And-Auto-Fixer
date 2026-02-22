@@ -5,7 +5,7 @@ export interface IDedupService {
   /**
    * Check if a raw error line is a duplicate and record it if not.
    */
-  isDuplicate(rawErrorLine: string): boolean;
+  isDuplicate(rawErrorLine: string): Promise<boolean>;
 
   /**
    * Stop background eviction tasks.
@@ -27,7 +27,7 @@ export class InMemoryDedupService implements IDedupService {
     this.startEviction();
   }
 
-  isDuplicate(raw: string): boolean {
+  async isDuplicate(raw: string): Promise<boolean> {
     const hash = this.computeHash(raw);
     const lastSeen = this.dedupMap.get(hash);
 
@@ -58,7 +58,7 @@ export class InMemoryDedupService implements IDedupService {
     if (evicted > 0) {
       getLogger().debug(
         { evicted, remaining: this.dedupMap.size },
-        "Dedup eviction"
+        "Dedup eviction",
       );
     }
   }

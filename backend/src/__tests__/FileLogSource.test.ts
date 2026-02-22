@@ -4,14 +4,14 @@ import path from "node:path";
 import os from "node:os";
 import { createLogger } from "../utils/logger.js";
 import { EventBus } from "../events/EventBus.js";
-import { LogTailer } from "../tailer/LogTailer.js";
+import { FileLogSource } from "../tailer/sources/FileLogSource.js";
 import type { AppConfig, ErrorBlock } from "../types/index.js";
 
 /**
  * Helper to stop the internal watcher so we can test processNewLines
  * in isolation without race conditions from fs.watch.
  */
-function stopWatcher(tailer: LogTailer): void {
+function stopWatcher(tailer: FileLogSource): void {
   // @ts-expect-error Accessing private property for testing
   if (tailer.watcher) {
     // @ts-expect-error Accessing private property for testing
@@ -21,12 +21,12 @@ function stopWatcher(tailer: LogTailer): void {
   }
 }
 
-async function triggerProcessing(tailer: LogTailer): Promise<void> {
+async function triggerProcessing(tailer: FileLogSource): Promise<void> {
   // @ts-expect-error Accessing private method for testing
   await tailer.processNewLines();
 }
 
-describe("LogTailer", () => {
+describe("FileLogSource", () => {
   let tmpDir: string;
   let logFile: string;
   let config: AppConfig;
@@ -48,6 +48,7 @@ describe("LogTailer", () => {
       ollamaModel: "llama3",
       ollamaBaseUrl: "http://localhost:11434",
       logLevel: "silent",
+      redisUrl: "redis://localhost:6379",
     };
   });
 
@@ -57,7 +58,7 @@ describe("LogTailer", () => {
   });
 
   it("should emit error-detected for ERROR lines", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -78,11 +79,11 @@ describe("LogTailer", () => {
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received[0].raw).toContain("ERROR");
     expect(received[0].id).toBeDefined();
-    expect(received[0].source).toBe(logFile);
+    expect(received[0].source).toBe(`file://${logFile}`);
   });
 
   it("should NOT emit for non-error lines", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -101,7 +102,7 @@ describe("LogTailer", () => {
   });
 
   it("should include context lines", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -126,7 +127,7 @@ describe("LogTailer", () => {
   });
 
   it("should extract timestamp from log line", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -149,7 +150,7 @@ describe("LogTailer", () => {
     // Write error BEFORE starting tailer
     fs.appendFileSync(logFile, "[2026-01-01T00:00:00Z] ERROR: Old error\n");
 
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -167,13 +168,13 @@ describe("LogTailer", () => {
   });
 
   it("should stop cleanly", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     await tailer.start();
     expect(() => tailer.stop()).not.toThrow();
   });
 
   it("should detect FATAL lines", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];
@@ -193,7 +194,7 @@ describe("LogTailer", () => {
   });
 
   it("should detect Exception lines", async () => {
-    const tailer = new LogTailer(config);
+    const tailer = new FileLogSource(config.logFilePath);
     const bus = EventBus.getInstance();
 
     const received: ErrorBlock[] = [];

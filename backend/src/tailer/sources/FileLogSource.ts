@@ -1,19 +1,20 @@
 import fs from "node:fs";
 import readline from "node:readline";
 import crypto from "node:crypto";
-import { EventBus } from "../events/EventBus.js";
-import { getLogger } from "../utils/logger.js";
-import type { AppConfig, ErrorBlock } from "../types/index.js";
+import { EventBus } from "../../events/EventBus.js";
+import { getLogger } from "../../utils/logger.js";
+import type { AppConfig, ErrorBlock } from "../../types/index.js";
+import type { ILogSource } from "../ILogSource.js";
 
-const ERROR_PATTERN = /\b(ERROR|FATAL)\b|Exception/i;
+const ERROR_PATTERN = /(ERROR|Exception|FATAL)/i;
 const TIMESTAMP_PATTERN = /\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\]/;
 const CONTEXT_BUFFER_SIZE = 10;
 
 /**
  * Watches a log file for new ERROR/Exception lines.
- * Uses fs.watch + stream-based reading for memory efficiency.
+ * Implements ILogSource.
  */
-export class LogTailer {
+export class FileLogSource implements ILogSource {
   private filePath: string;
   private offset: number = 0;
   private watcher: fs.FSWatcher | null = null;
@@ -23,43 +24,45 @@ export class LogTailer {
   private retryCount: number = 0;
   private maxRetries: number = 5;
 
-  constructor(config: AppConfig) {
-    this.filePath = config.logFilePath;
+  constructor(filePath: string) {
+    this.filePath = filePath;
     this.bus = EventBus.getInstance();
   }
 
-  /**
-   * Start watching the log file.
-   * Seeks to end of file — only processes new lines.
-   */
   async start(): Promise<void> {
     const logger = getLogger();
 
-    // Seek to end of file
-    const stats = fs.statSync(this.filePath);
-    this.offset = stats.size;
-    logger.info(
-      { filePath: this.filePath, offset: this.offset },
-      "Log tailer started"
-    );
+    if (!fs.existsSync(this.filePath)) {
+      logger.warn(`Log file ${this.filePath} does not exist yet. Watching dir.`);
+      // In a real app we might watch the dir for creation, but for MVP we will throw or retry.
+      // Keeping it simple for the MVP implementation.
+    }
 
-    // Start file watcher
+    const stats = fs.existsSync(this.filePath) ? fs.statSync(this.filePath) : { size: 0 };
+    this.offset = stats.size;
+    logger.info({ filePath: this.filePath, offset: this.offset }, "FileLogSource started");
+
+    if (fs.existsSync(this.filePath)) {
+      this.attachWatcher();
+    } else {
+      // Fallback polling if file doesn't exist yet
+      this.handleWatcherError();
+    }
+  }
+
+  private attachWatcher() {
     this.watcher = fs.watch(this.filePath, (eventType) => {
       if (eventType === "change" && !this.isProcessing) {
         this.processNewLines();
       }
     });
 
-    // Handle watcher errors
     this.watcher.on("error", (err) => {
-      logger.error({ err, filePath: this.filePath }, "File watcher error");
+      getLogger().error({ err, filePath: this.filePath }, "File watcher error");
       this.handleWatcherError();
     });
   }
 
-  /**
-   * Read new lines appended since last offset.
-   */
   private async processNewLines(): Promise<void> {
     this.isProcessing = true;
     const logger = getLogger();
@@ -67,35 +70,28 @@ export class LogTailer {
     try {
       const stats = fs.statSync(this.filePath);
 
-      // File truncated (rotated) — reset offset
       if (stats.size < this.offset) {
         logger.warn("File truncated, resetting offset to 0");
         this.offset = 0;
       }
 
-      // No new data
       if (stats.size === this.offset) {
         return;
       }
 
-      // Create read stream from offset
       const stream = fs.createReadStream(this.filePath, {
         start: this.offset,
         encoding: "utf-8",
       });
 
-      const rl = readline.createInterface({
-        input: stream,
-        crlfDelay: Infinity,
-      });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
       for await (const line of rl) {
         this.processLine(line);
       }
 
-      // Update offset
       this.offset = stats.size;
-      this.retryCount = 0; // Reset retry count on success
+      this.retryCount = 0;
     } catch (err) {
       logger.error({ err }, "Error processing new lines");
     } finally {
@@ -103,35 +99,22 @@ export class LogTailer {
     }
   }
 
-  /**
-   * Process a single log line:
-   * - Add to circular context buffer
-   * - If ERROR/Exception detected, emit ErrorBlock
-   */
   private processLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    // Add to circular buffer
     this.contextBuffer.push(trimmed);
     if (this.contextBuffer.length > CONTEXT_BUFFER_SIZE) {
       this.contextBuffer.shift();
     }
 
-    // Check for error pattern
     if (ERROR_PATTERN.test(trimmed)) {
       const errorBlock = this.createErrorBlock(trimmed);
       this.bus.emit("error-detected", errorBlock);
-      getLogger().info(
-        { errorId: errorBlock.id, raw: trimmed },
-        "Error detected"
-      );
+      getLogger().info({ errorId: errorBlock.id, raw: trimmed }, "Error detected by FileLogSource");
     }
   }
 
-  /**
-   * Create an ErrorBlock from a matched error line.
-   */
   private createErrorBlock(line: string): ErrorBlock {
     const timestampMatch = line.match(TIMESTAMP_PATTERN);
 
@@ -140,13 +123,10 @@ export class LogTailer {
       raw: line,
       contextLines: [...this.contextBuffer],
       timestamp: timestampMatch?.[1] ?? new Date().toISOString(),
-      source: this.filePath,
+      source: `file://${this.filePath}`,
     };
   }
 
-  /**
-   * Handle watcher errors with exponential backoff reconnect.
-   */
   private handleWatcherError(): void {
     const logger = getLogger();
 
@@ -156,11 +136,8 @@ export class LogTailer {
     }
 
     this.retryCount++;
-    const delay = Math.pow(2, this.retryCount) * 1000; // exponential backoff
-    logger.warn(
-      { retryCount: this.retryCount, delayMs: delay },
-      "Retrying file watcher"
-    );
+    const delay = Math.pow(2, this.retryCount) * 1000;
+    logger.warn({ retryCount: this.retryCount, delayMs: delay }, "Retrying file watcher");
 
     setTimeout(() => {
       this.stop();
@@ -168,14 +145,11 @@ export class LogTailer {
     }, delay);
   }
 
-  /**
-   * Stop watching the file. Called during graceful shutdown.
-   */
   stop(): void {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
     }
-    getLogger().info("Log tailer stopped");
+    getLogger().info("FileLogSource stopped");
   }
 }

@@ -116,9 +116,11 @@ export interface AppConfig {
   dedupTtlMs: number;
   crewaiMode: "subprocess" | "http";
   crewaiHost: string;
-  ollamaModel: string;
-  ollamaBaseUrl: string;
+  llmModel: string;
+  llmBaseUrl: string;
   logLevel: string;
+  redisUrl: string;
+  agentTimeoutMs: number;
 }
 
 // ─── Event Map (for typed EventEmitter) ────────────────────────

@@ -55,8 +55,8 @@ describe("SubprocessAgentClient", () => {
       dedupTtlMs: 300000,
       crewaiMode: "subprocess",
       crewaiHost: "http://localhost:8000",
-      ollamaModel: "llama3",
-      ollamaBaseUrl: "http://localhost:11434",
+      llmModel: "llama3",
+      llmBaseUrl: "http://localhost:11434",
       logLevel: "silent",
     };
   });

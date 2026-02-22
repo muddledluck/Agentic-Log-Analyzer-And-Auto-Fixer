@@ -92,40 +92,30 @@ sequenceDiagram
 ### 5.4 Project Structure (Proposed)
 
 ```
-alaa/
-├── docs/                     # Architecture & PRD documents
-├── src/
-│   ├── index.ts              # Entry point
-│   ├── config/
-│   │   └── index.ts          # Configuration loading (env vars, paths)
-│   ├── tailer/
-│   │   └── LogTailer.ts      # File watcher + line reader (MVP LogSource)
-│   ├── adapters/             # Phase 2: Plug-and-play log source adapters
-│   │   ├── LogSource.ts      # Interface definition
-│   │   ├── AdapterRegistry.ts# Adapter lifecycle manager
-│   │   ├── PM2LogSource.ts   # PM2 adapter
-│   │   ├── CloudWatchSource.ts# AWS CloudWatch adapter
-│   │   └── ...               # Docker, GCP, Azure, Webhook adapters
-│   ├── events/
-│   │   └── EventBus.ts       # Singleton EventEmitter wrapper
-│   ├── orchestrator/
-│   │   └── Orchestrator.ts   # Pipeline coordinator
-│   ├── agents/
-│   │   ├── crewai-service/   # Python CrewAI sidecar
-│   │   │   ├── main.py       # HTTP server / CLI entry
-│   │   │   ├── agents.py     # Agent definitions
-│   │   │   ├── tasks.py      # Task definitions
-│   │   │   └── requirements.txt
-│   │   └── AgentClient.ts    # Node client to invoke CrewAI
-│   ├── reporter/
-│   │   └── ReportGenerator.ts# Markdown report builder
-│   └── utils/
-│       └── logger.ts         # Internal structured logger
-├── reports/                  # Generated diagnostic reports
-├── alaa.config.yaml          # Phase 2: Log source adapter configuration
-├── package.json
-├── tsconfig.json
-└── .env.example
+├── alaa-ai-service/          # Python CrewAI Microservice
+│   ├── main.py               # Core orchestrator and models
+│   ├── api.py                # FastAPI endpoints
+│   ├── agents.py             # Agent definitions
+│   ├── tasks.py              # Task definitions
+│   └── requirements.txt
+├── backend/                  # Node.js Core Engine
+│   ├── docs/                 # Architecture & PRD documents
+│   ├── src/
+│   │   ├── index.ts          # Entry point
+│   │   ├── config/
+│   │   ├── tailer/           # Log listeners / Adapters
+│   │   ├── events/
+│   │   ├── orchestrator/
+│   │   ├── queue/            # BullMQ 
+│   │   ├── agents/
+│   │   │   └── HttpAgentClient.ts # Node client to invoke CrewAI over HTTP
+│   │   ├── reporter/
+│   │   └── utils/
+│   ├── reports/              # Generated diagnostic reports
+│   ├── docker-compose.yml    # Runs Redis + alaa-ai-service
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── .env.example
 ```
 
 ---
@@ -143,11 +133,11 @@ Since CrewAI is Python-native, the cleanest integration is a **sidecar microserv
 
 | Option | Verdict |
 |--------|---------|
-| Python subprocess (stdin/stdout) | ✅ Simplest for MVP — spawn `python main.py` with JSON args |
-| HTTP microservice (FastAPI) | ✅ Best for Phase 2 — independent scaling, health checks |
+| Python subprocess (stdin/stdout) | ❌ Deprecated in Phase 8 (Slow, tight coupling) |
+| HTTP microservice (FastAPI) | ✅ Fully isolated service in `alaa-ai-service`, scaled independently |
 | Node.js native LLM SDK | ❌ Loses CrewAI's multi-agent orchestration benefits |
 
-**MVP approach:** Python subprocess. **Phase 2:** HTTP microservice.
+**MVP approach:** Isolated Python FastAPI microservice (`alaa-ai-service`).
 
 ### 6.3 Deduplication
 Repeated identical errors should not trigger repeated analysis. A simple in-memory hash set (error signature → timestamp) with a TTL will deduplicate within a time window. Phase 2 moves this to Redis.
