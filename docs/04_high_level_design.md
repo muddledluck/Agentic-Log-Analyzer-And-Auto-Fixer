@@ -861,3 +861,7 @@ flowchart TD
     D -->|No| E["Raise HTTPException 500\n(BullMQ retries or DLQ)"]
 ```
 
+
+
+---
+*Navigation: [← 03_mvp_plan.md](./03_mvp_plan.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./05_low_level_design.md)*

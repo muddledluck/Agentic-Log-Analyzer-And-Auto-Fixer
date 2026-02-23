@@ -19,3 +19,7 @@ A background service that continuously monitors application error logs in real-t
 * **Core Backend:** Node.js. Implementing the Observer pattern—like the concepts covered in *Node.js Design Patterns* by Mario Casciaro and Luciano Mammino—will be perfect here for the log watcher. Using native `EventEmitter` ensures clean stream processing without memory leaks.
 * **AI Orchestration:** CrewAI to handle the multi-agent communication and task delegation.
 * **Queue (Phase 2):** BullMQ and Redis for robust asynchronous job handling once the system scales.
+
+
+---
+*Navigation: [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./02_general_architecture.md)*

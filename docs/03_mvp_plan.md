@@ -217,3 +217,7 @@ timeline
 |-------|-------------|----------|
 | **Phase 2** | Multi-LLM (OpenAI, Claude, Gemini), Log adapters (AWS, PM2, Docker), BullMQ queue, HTTP mode for CrewAI | High |
 | **Phase 3** | Next.js dashboard, PostgreSQL, Auth (OAuth + RBAC), Stripe billing, Teams, Slack/email notifications | Medium |
+
+
+---
+*Navigation: [← 02_general_architecture.md](./02_general_architecture.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./04_high_level_design.md)*

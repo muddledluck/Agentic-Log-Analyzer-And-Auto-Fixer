@@ -43,3 +43,7 @@ The `alaa-ai-service` is strictly decoupled. Modifying how models are invoked re
 ### 3. Verification
 - Shut off your local Ollama instance or provide a broken API key for the primary model.
 - Verify that ALAA successfully falls back to the secondary model and still generates the diagnostic markdown report.
+
+
+---
+*Navigation: [← 06_backend_v2_extensions.md](./06_backend_v2_extensions.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./08_multi_agent_lld.md)*

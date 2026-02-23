@@ -38,3 +38,7 @@ Now that the MVP is proven stable (29/29 tests passing), I will implement your r
    - `index.ts` (the composition root) will wire these components together, ensuring the Orchestrator remains agnostic to the underlying implementations.
 
 I will proceed with applying these updates now.
+
+
+---
+*Navigation: [← 05_low_level_design.md](./05_low_level_design.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./07_multi_agent_spec.md)*

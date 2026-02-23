@@ -143,3 +143,7 @@ The FastAPI routes simply import and invoke the services using the structured sc
 
 ## 4. Dependencies
 No new dependencies are strictly required since `crewai` natively wraps `litellm`. Ensure the developer checks the imports for `from crewai import LLM`.
+
+
+---
+*Navigation: [← 07_multi_agent_spec.md](./07_multi_agent_spec.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./09_llm_routing_strategy.md)*

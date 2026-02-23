@@ -57,3 +57,7 @@ If the ALAA error-tracking system relies purely on a single primary API (e.g., `
 We configure an independent `FALLBACK_LLM_MODEL` mapping to a completely distinct provider namespace (e.g., if Primary is `openai`, Fallback is `gemini` or `ollama`).
 
 If the primary network request fails, the Python microservice automatically catches the `4XX` or `5XX` exception, destroys the initialized agent, recreates the CrewAI pipeline injecting the fallback configuration, and routes the task to the secondary provider. The system does not crash, the queue is cleared, and the developer receives the report without interruption.
+
+
+---
+*Navigation: [← 08_multi_agent_lld.md](./08_multi_agent_lld.md) | [Main Index](../README.md#📚-architecture-documentation-index)*

@@ -347,3 +347,7 @@ Upon approval of this General Architecture:
 1. ✅ **HLD** — detailed module specs, API contracts, data models, error-handling strategy (complete).
 2. **LLD** — TypeScript interfaces, class designs, function signatures, CrewAI agent/task configs.
 3. **MVP Plan** — prioritised feature list, timeline estimates, risk assessment.
+
+
+---
+*Navigation: [← 01_product_requirements.md](./01_product_requirements.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./03_mvp_plan.md)*

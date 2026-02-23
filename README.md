@@ -33,6 +33,20 @@ ollama serve
 ollama pull llama3
 ```
 
+## 📚 Architecture Documentation Index
+
+For a deep dive into the system's design, consult the sequentially numbered documentation inside the `docs/` folder:
+
+1. **[01_product_requirements.md](./docs/01_product_requirements.md)** - Core feature specifications
+2. **[02_general_architecture.md](./docs/02_general_architecture.md)** - High-level component diagrams
+3. **[03_mvp_plan.md](./docs/03_mvp_plan.md)** - Execution schedule for the initial build
+4. **[04_high_level_design.md](./docs/04_high_level_design.md)** - Detailed API boundaries and DB schemas
+5. **[05_low_level_design.md](./docs/05_low_level_design.md)** - Class-level specifications for Phase 1
+6. **[06_backend_v2_extensions.md](./docs/06_backend_v2_extensions.md)** - Extensibility planning post-MVP
+7. **[07_multi_agent_spec.md](./docs/07_multi_agent_spec.md)** - Specifications for Python microservice extraction
+8. **[08_multi_agent_lld.md](./docs/08_multi_agent_lld.md)** - Low-level design for Python refactor
+9. **[09_llm_routing_strategy.md](./docs/09_llm_routing_strategy.md)** - Architectural rationale for multi-model fallback
+
 ## 🚀 Setup & Installation
 
 ### 1. Unified Boot (Recommended)

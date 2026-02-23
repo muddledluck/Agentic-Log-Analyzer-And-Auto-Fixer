@@ -1523,3 +1523,7 @@ export class AdapterRegistry {
   }
 }
 ```
+
+
+---
+*Navigation: [← 04_high_level_design.md](./04_high_level_design.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./06_backend_v2_extensions.md)*
