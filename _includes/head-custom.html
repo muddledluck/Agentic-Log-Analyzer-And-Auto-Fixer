@@ -1,0 +1,26 @@
+<!-- MERMAID SUPPORT -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    // Find all code blocks marked as mermaid
+    const codeBlocks = document.querySelectorAll('pre.highlight code.language-mermaid, pre > code.language-mermaid');
+    
+    codeBlocks.forEach((codeBlock) => {
+      // Create a new div for Mermaid to render
+      const div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = codeBlock.textContent;
+      
+      // Replace the Jekyll code block with the Mermaid div
+      // We try to find the outermost pre/div container to replace
+      const preBlock = codeBlock.closest('pre');
+      const container = preBlock.closest('div.highlighter-rouge') || preBlock;
+      
+      if (container) {
+        container.replaceWith(div);
+      }
+    });
+  });
+</script>
