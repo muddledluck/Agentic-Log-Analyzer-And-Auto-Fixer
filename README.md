@@ -14,11 +14,11 @@ ALAA is a backend service powered by AI agents (using [CrewAI](https://www.crewa
 
 ## 🏗️ Architecture Stack
 
-- **Orchestrator (Backend):** Node.js, TypeScript, EventBus architecture.
-- **AI Service:** Python 3, CrewAI, LiteLLM.
-- **LLM Provider:** Ollama (`llama3`).
+- **Orchestrator (Backend):** Node.js, TypeScript, EventBus, Redis, BullMQ.
+- **AI Microservice:** Python 3, FastAPI, CrewAI, LiteLLM.
+- **LLM Provider:** Ollama (`llama3` default) or any LiteLLM-compatible API (e.g. OpenAI).
 
-Our backend is built using Interface Dependency Injection (SOLID principles), paving the way for future cloud log adapters (AWS CloudWatch, PM2) and external AI providers (OpenAI, Anthropic).
+Our backend is completely decoupled: the Python AI service runs as a standalone FastAPI microservice (`alaa-ai-service`) and is **never** imported into the Node.js backend. Instead, the Node.js Core Engine manages the file tailing and deduplication, and schedules API workloads into a resilient BullMQ queue cluster which issues HTTP requests to the Python compute layer.
 
 ## 📋 Prerequisites
 
@@ -35,29 +35,30 @@ ollama pull llama3
 
 ## 🚀 Setup & Installation
 
-### 1. Python Environment Setup
-Install the required Python dependencies for the CrewAI subprocess:
+### 1. Unified Boot (Recommended)
+ALAA ships with a `docker-compose.yml` to effortlessly boot the Redis queue and the Python Microservice side-by-side:
 ```bash
-cd backend/src/agents/crewai-service
-pip3 install -r requirements.txt
+docker-compose up -d
 ```
+*Note: This automatically builds and starts the `alaa-ai-service` strictly isolated from the Node.js layer.*
 
-### 2. Node.js Environment Setup
+### 2. Node.js Core Backend Setup
 Install the TypeScript backend dependencies:
 ```bash
 cd backend
 npm install
 ```
 
-Make sure your environment variables are configured. (By default, the `.env` file assumes an output log file named `system.log` in the root directory).
+Make sure your environment variables are configured. (Copy the `.env.example` file securely).
 
 ## 🖥️ Usage
 
-1. Start the ALAA Orchestrator in development mode:
+1. Start the ALAA Orchestrator:
    ```bash
    cd backend
    npm run dev
    ```
+   *The Node.js Orchestrator will seamlessly connect to the Redis instance and the standalone Python `alaa-ai-service`.*
    You should see terminal output indicating ALAA is watching for errors.
 
 2. In a separate terminal, inject an error into your target log file (e.g., `system.log`):
@@ -71,27 +72,28 @@ Make sure your environment variables are configured. (By default, the `.env` fil
 
 ```text
 alaa/
-├── backend/
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       ├── index.ts                 # Application entry point
-│       ├── config/                  # Environment validation
-│       ├── events/                  # Singleton EventBus
-│       ├── orchestrator/            # Pipeline manager
-│       ├── reporter/                # Markdown builder
-│       ├── services/                # IDedupService
-│       ├── tailer/                  # fs.watch Log tailing
-│       └── agents/
-│           ├── IAgentClient.ts      # Agent Interface definition
-│           ├── SubprocessAgentClient.ts # IPC Executor
-│           └── crewai-service/      # Python Multi-Agent Logic
-│               ├── main.py          # JSON stdin/stdout router
-│               ├── agents.py        # Parser & Debugger prompts
-│               └── tasks.py         # CrewAI logic & Pydantic output schemas
+├── alaa-ai-service/                 # 100% Isolated Python Compute Layer
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── app/                         # Modular FastAPI Application
+│       ├── main.py                  # FastAPI Application Entry
+│       ├── api/                     # API Routers & Endpoints
+│       ├── core/                    # Config & LLM Routing Logic
+│       ├── models/                  # Pydantic Schemas
+│       ├── services/                # CrewAI Orchestration
+│       └── agents/                  # Prompts & Task Definitions
+├── backend/                         # Node.js Core Engine
+│   ├── src/
+│   │   ├── index.ts                 # Application entry point
+│   │   ├── config/                  # Environment validation
+│   │   ├── tailer/                  # fs.watch Log tailing & Adapters
+│   │   ├── orchestrator/            # Pipeline manager
+│   │   ├── queue/                   # BullMQ workers for AI dispatch
+│   │   ├── reporter/                # Markdown builder
+│   │   └── agents/                  # HttpAgentClient for REST invocations
 ├── docs/                            # Internal Architecture specs (HLD/LLD)
-├── system.log                       # Local application log (mock target)
-└── temp/mvp-test/                   # Automated end-to-end testing scripts
+├── docker-compose.yml               # Orchestrates Redis + ai-service
+└── system.log                       # Local application log (mock target)
 ```
 
 ## 🧪 Testing

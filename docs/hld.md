@@ -1,5 +1,7 @@
 # ALAA — High-Level Design (HLD)
 
+> **Status**: MVP Complete. Currently executing **Phase 2** (Production Extensions & Scalability).
+
 ## 1. Module Overview
 
 The system is composed of seven core modules plus a **plug-and-play adapter layer** (Phase 2). Each module is a self-contained unit with clear interfaces.
@@ -26,6 +28,12 @@ graph TB
         DA["Debugger Agent"]
     end
 
+    subgraph "Phase 3: SaaS Core"
+        FE["Next.js Frontend"]
+        DB[(PostgreSQL)]
+        AUTH["OAuth / NextAuth"]
+    end
+
     subgraph "Log Sources"
         LS1["📂 Local .log File"]
         LS2["☁️ AWS CloudWatch"]
@@ -50,9 +58,12 @@ graph TB
     CS --> PA
     PA --> DA
     DA -->|JSON result| AC
-    AC --> OR
-    OR --> RG
-    RG -->|writes| RPT["📄 reports/*.md"]
+    AC -->|Status update| OR
+    OR --> RG["Report Generator"]
+    RG -->|Writes .md| FILE
+    RG -->|Writes to DB| DB
+    FE -->|Fetches Data| DB
+    FE -->|Authenticates| AUTHRPT["📄 reports/*.md"]
 
     CFG -.->|env config| LT
     CFG -.->|env config| AC
@@ -718,3 +729,135 @@ stateDiagram-v2
 Upon approval of this HLD:
 1. **LLD** — TypeScript interfaces, class implementations, function signatures, CrewAI agent definitions in Python.
 2. **MVP Plan** — Feature prioritization, timeline, risks, and roadmap to production.
+
+---
+
+## 10. Phase 3: SaaS Expansion Modules
+
+To transform ALAA into a multi-tenant product, the following new modules are introduced:
+
+### 10.1 Next.js Frontend Dashboard (`frontend/`)
+A React-based web interface built on Next.js 14+ (App Router). 
+- **User Authentication:** Login/Signup flows.
+- **Log Source Configuration:** UI to add integrations (e.g., provide AWS CloudWatch credentials or PM2 stream endpoints).
+- **Report Viewer:** Rich UI for displaying Markdown reports interactively.
+- **Billing Portal:** Subscription management.
+
+### 10.2 Database Layer (`models/` via Prisma)
+PostgreSQL handles persistent state, accessed via Prisma ORM.
+- **User schema:** OAuth credentials, email, preferences.
+- **Workspace schema:** Organizations for teams to share logs.
+- **LogSource schema:** Encrypted API keys and config for active adapters.
+- **Report schema:** The JSON/Text output of the Orchestrator for historical tracking.
+
+### 10.3 Auth & Permissions (`middleware/`)
+Token-based access control protecting the dashboard and backend APIs.
+- NextAuth.js for frontend side sessions (OAuth via GitHub/Google).
+- JWT bearer tokens for external backend API access (if providing CLI tools to SaaS users).
+
+### 10.4 Billing API Integrations
+Webhooks listening to Stripe for subscription tier enforcement.
+- Pro tier unlocks advanced GPT-4 / Claude-3 Opus models.
+- Free tier restricts to generic local Llama models or fewer log ingestions per day.
+
+---
+
+## 11. Phase 10: Multi-Agent Model Assignments & Fallbacks
+
+> **Scope**: Upgrades to the `alaa-ai-service` Python layer and relevant Node.js config/client code only. No other modules are affected.
+
+### 11.1 Motivation
+
+Currently, both the Parser Agent and the Debugger Agent share a single LLM instance passed from the Node.js backend. This is sub-optimal:
+- The **Parser Agent** only needs fast, cheap structured extraction — ideal for a lightweight model.
+- The **Debugger Agent** demands deep code reasoning — benefits greatly from a premium model.
+
+Additionally, a single model point-of-failure means any downtime blocks the entire pipeline.
+
+### 11.2 Architecture: Multi-Provider Config Flow
+
+```mermaid
+flowchart LR
+    subgraph "Node.js: Configuration Layer"
+        ENV[".env file"]
+        CFG["config/index.ts"]
+        HAC["HttpAgentClient.ts"]
+    end
+
+    subgraph "HTTP Config Payload"
+        PAYLOAD["{\n  parserModel: 'ollama/llama3',\n  debuggerModel: 'openai/gpt-4o',\n  fallbackModel: 'gemini/gemini-1.5-pro',\n  apiKeys: { openai, anthropic, gemini }\n}"]
+    end
+
+    subgraph "alaa-ai-service: Modular Python Compute"
+        API["app/api/routes.py\n(FastAPI)"]
+        LLM_P["app/core/llm_factory.py\nParser LLM (LiteLLM)"]
+        LLM_D["app/core/llm_factory.py\nDebugger LLM (LiteLLM)"]
+        FB["LiteLLM\nFallback Router"]
+    end
+
+    ENV -->|reads| CFG
+    CFG -->|injects into request| HAC
+    HAC -->|HTTP POST + config payload| API
+    API -->|instantiates| LLM_P
+    API -->|instantiates| LLM_D
+    LLM_P -->|on failure| FB
+    LLM_D -->|on failure| FB
+```
+
+### 11.3 Supported LLM Providers
+
+ALAA uses **LiteLLM** as the universal model abstraction layer. By simply editing `.env`, users can route requests to any leading provider:
+
+| Provider | Example Model String | Required Secret |
+|----------|---------------------|-----------------|
+| **Ollama (local)** | `ollama/llama3`, `ollama/codellama` | None (local) |
+| **OpenAI** | `openai/gpt-4o`, `openai/gpt-3.5-turbo` | `OPENAI_API_KEY` |
+| **Anthropic** | `anthropic/claude-3-5-sonnet-20240620` | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | `gemini/gemini-1.5-pro`, `gemini/gemini-flash` | `GEMINI_API_KEY` |
+
+### 11.4 Environment Configuration
+
+New variables added to `.env`:
+
+```env
+# Per-Agent Model Assignments (LiteLLM prefix format)
+PARSER_LLM_MODEL=ollama/llama3          # Fast/cheap for extraction
+DEBUGGER_LLM_MODEL=openai/gpt-4o       # Powerful for reasoning
+FALLBACK_LLM_MODEL=gemini/gemini-1.5-pro  # Fallback if primary fails
+
+# Provider API Keys (only required if using that provider)
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+```
+
+### 11.5 Config Payload Contract
+
+The Node.js `HttpAgentClient` will extend its request body with a `config` object containing all model and key info:
+
+```typescript
+interface AgentConfig {
+  parserModel: string;       // e.g. "ollama/llama3"
+  debuggerModel: string;     // e.g. "openai/gpt-4o"
+  fallbackModel: string;     // e.g. "gemini/gemini-1.5-pro"
+  apiKeys: {
+    openai?: string;
+    anthropic?: string;
+    gemini?: string;
+  };
+}
+```
+
+The Python FastAPI service reads this payload to instantiate **two separate** LiteLLM-backed LLM objects — one per agent — and configures the fallback chain prior to running the CrewAI pipeline.
+
+### 11.6 Fallback Chain Flow
+
+```mermaid
+flowchart TD
+    A["Agent invokes LLM"] --> B{"Primary model\nresponds?"}
+    B -->|Yes| C["Return result"]
+    B -->|No — timeout / rate limit / auth error| D{"Fallback model\nresponds?"}
+    D -->|Yes| C
+    D -->|No| E["Raise HTTPException 500\n(BullMQ retries or DLQ)"]
+```
+

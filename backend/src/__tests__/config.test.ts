@@ -33,22 +33,26 @@ describe("Config Module", () => {
 
     expect(config.logFilePath).toBe(path.resolve(tmpLogFile));
     expect(config.dedupTtlMs).toBe(300000);
-    expect(config.crewaiMode).toBe("subprocess");
-    expect(config.llmModel).toBe("ollama/llama3");
+    expect(config.crewaiMode).toBe("http");
+    expect(config.parserLlmModel).toBe("ollama/llama3");
+    expect(config.debuggerLlmModel).toBe("openai/gpt-4o");
+    expect(config.fallbackLlmModel).toBe("gemini/gemini-1.5-pro");
     expect(config.llmBaseUrl).toBe("http://localhost:11434");
     expect(config.logLevel).toBe("info");
   });
 
   it("should respect custom env vars", async () => {
     process.env.DEDUP_TTL_MS = "60000";
-    process.env.LLM_MODEL = "codellama";
+    process.env.PARSER_LLM_MODEL = "codellama";
+    process.env.DEBUGGER_LLM_MODEL = "gpt-4";
     process.env.LOG_LEVEL = "debug";
 
     const { loadConfig } = await import("../config/index.js");
     const config = loadConfig();
 
     expect(config.dedupTtlMs).toBe(60000);
-    expect(config.llmModel).toBe("codellama");
+    expect(config.parserLlmModel).toBe("codellama");
+    expect(config.debuggerLlmModel).toBe("gpt-4");
     expect(config.logLevel).toBe("debug");
   });
 

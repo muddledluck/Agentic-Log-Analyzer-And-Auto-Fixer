@@ -12,9 +12,9 @@
 |---|-----------|---------------|
 | 1 | **Log Tailer** | MVP log source — watches local `.log` files for new `ERROR` / `Exception` lines using `fs.watch` + `readline`, emits events via `EventEmitter`. |
 | 2 | **Event Bus** | Internal `EventEmitter` that decouples log sources from downstream processing. Publishes `error-detected` events. |
-| 3 | **Orchestrator** | Receives events, creates a processing pipeline, delegates to the Parser Agent → Debugger Agent in sequence. |
-| 4 | **Parser Agent** | AI agent (via CrewAI) that cleans raw log data, strips noise, and extracts the core error signature. |
-| 5 | **Debugger Agent** | AI agent (via CrewAI) that analyzes the parsed error, identifies root cause, and proposes a specific code fix. |
+| 3 | **Message Queue (BullMQ + Redis)** | Decouples log detection from AI processing. Queues allow rate-limiting LLM requests, automatic retries for transient errors, and deduplication of high-frequency identical logs. |
+| 4 | **Microservice AI Layer (FastAPI)** | The heavy Python-based CrewAI logic runs isolated in its own container (`alaa-ai-service`). This cleanly separates the Node.js I/O streaming world from the Python AI/Compute world. |
+| 5 | **SaaS Frontend & Database (Phase 3)** | A Next.js frontend application allows users to view parsed reports, manage credentials, and configure active log streams. A relational PostgreSQL database stores users, subscription tiers (Stripe), OAuth credentials, and long-term historical analysis reports. |
 | 6 | **Report Generator** | Formats agent outputs into a readable `.md` diagnostic report and writes it to disk. |
 | 7 | **Queue (Phase 2)** | BullMQ + Redis layer for robust async job handling when scaling beyond a single process. |
 | 8 | **Log Source Adapters (Phase 2)** | Plug-and-play adapter layer — AWS CloudWatch, PM2, Docker, GCP, Azure, Webhook. Any adapter implementing the `LogSource` interface feeds errors into the pipeline. |
@@ -116,6 +116,13 @@ sequenceDiagram
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── .env.example
+├── frontend/                 # Next.js Dashboard (Phase 3)
+│   ├── src/
+│   │   ├── app/              # Next.js App Router Next15
+│   │   ├── components/       # UI Components
+│   │   └── lib/              # API Clients / Data fetchers
+│   ├── package.json
+│   └── tailwind.config.ts
 ```
 
 ---
@@ -142,10 +149,22 @@ Since CrewAI is Python-native, the cleanest integration is a **sidecar microserv
 ### 6.3 Deduplication
 Repeated identical errors should not trigger repeated analysis. A simple in-memory hash set (error signature → timestamp) with a TTL will deduplicate within a time window. Phase 2 moves this to Redis.
 
-### 6.4 Plug-and-Play Log Source Adapters (Phase 2)
+### 6.4 Phase 3: SaaS Data Tier
+
+As ALAA transitions to a multi-tenant SaaS application, we implement **PostgreSQL** linked via Prisma ORM for long term data durability.
+
+| Data Type | Storage Solution | Rationale |
+|-----------|------------------|-----------|
+| In-flight processing queue | Redis (BullMQ) | Blazing fast pop/push, atomic deduplication |
+| User Accounts & Billing | PostgreSQL | ACID transactions, strict relational schemas |
+| Historical Reports | PostgreSQL | Easy querying and pagination for user dashboard |
+
+For the Frontend, **Next.js (App Router)** is selected alongside **TailwindCSS** for rapid, responsive UI development natively supporting server-side rendering for SEO and fast dashboard load times.
+
+### 6.5 Plug-and-Play Log Source Adapters (Phase 2)
 The Log Tailer is the MVP's concrete log source, but it implements a generic `LogSource` interface. In Phase 2, an **Adapter Registry** allows users to plug in additional log sources (AWS CloudWatch, PM2, Docker, GCP, Azure, or custom webhooks) via a simple `alaa.config.yaml` configuration file. The downstream pipeline remains entirely agnostic to the source — all adapters normalize output into the same `ErrorBlock` format. See the HLD §2.8 for full details.
 
-### 6.5 LLM Provider Strategy
+### 6.6 LLM Provider Strategy
 **MVP:** Ollama only — self-hosted, free, no API keys. Users run `ollama serve` locally and configure via `OLLAMA_MODEL` and `OLLAMA_BASE_URL` env vars. Recommended models: `llama3` (general), `codellama` (code-focused), `mistral` (balanced).
 
 **Phase 2:** Multi-provider abstraction via `LLM_PROVIDER` env var. Adds support for:

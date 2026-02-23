@@ -5,8 +5,15 @@ import type { IAgentClient } from "./IAgentClient.js";
 interface AgentRequest {
   payload: Record<string, unknown>;
   config: {
-    model: string;
+    parserModel: string;
+    debuggerModel: string;
+    fallbackModel?: string;
     baseUrl: string;
+    apiKeys: {
+      openai?: string;
+      anthropic?: string;
+      gemini?: string;
+    };
   };
 }
 
@@ -42,8 +49,11 @@ export class HttpAgentClient implements IAgentClient {
     const request: AgentRequest = {
       payload: { rawBlock, contextLines },
       config: {
-        model: this.config.llmModel,
+        parserModel: this.config.parserLlmModel,
+        debuggerModel: this.config.debuggerLlmModel,
+        fallbackModel: this.config.fallbackLlmModel,
         baseUrl: this.config.llmBaseUrl,
+        apiKeys: this.config.apiKeys,
       },
     };
 
@@ -57,8 +67,11 @@ export class HttpAgentClient implements IAgentClient {
     const request: AgentRequest = {
       payload: { parsedError },
       config: {
-        model: this.config.llmModel,
+        parserModel: this.config.parserLlmModel,
+        debuggerModel: this.config.debuggerLlmModel,
+        fallbackModel: this.config.fallbackLlmModel,
         baseUrl: this.config.llmBaseUrl,
+        apiKeys: this.config.apiKeys,
       },
     };
 

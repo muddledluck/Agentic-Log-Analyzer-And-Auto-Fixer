@@ -116,8 +116,15 @@ export interface AppConfig {
   dedupTtlMs: number;
   crewaiMode: "subprocess" | "http";
   crewaiHost: string;
-  llmModel: string;
+  parserLlmModel: string;
+  debuggerLlmModel: string;
+  fallbackLlmModel?: string;
   llmBaseUrl: string;
+  apiKeys: {
+    openai?: string;
+    anthropic?: string;
+    gemini?: string;
+  };
   logLevel: string;
   redisUrl: string;
   agentTimeoutMs: number;
