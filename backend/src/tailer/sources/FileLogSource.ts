@@ -15,6 +15,7 @@ const CONTEXT_BUFFER_SIZE = 10;
  * Implements ILogSource.
  */
 export class FileLogSource implements ILogSource {
+  readonly name = "file";
   private filePath: string;
   private offset: number = 0;
   private watcher: fs.FSWatcher | null = null;
@@ -33,14 +34,21 @@ export class FileLogSource implements ILogSource {
     const logger = getLogger();
 
     if (!fs.existsSync(this.filePath)) {
-      logger.warn(`Log file ${this.filePath} does not exist yet. Watching dir.`);
+      logger.warn(
+        `Log file ${this.filePath} does not exist yet. Watching dir.`,
+      );
       // In a real app we might watch the dir for creation, but for MVP we will throw or retry.
       // Keeping it simple for the MVP implementation.
     }
 
-    const stats = fs.existsSync(this.filePath) ? fs.statSync(this.filePath) : { size: 0 };
+    const stats = fs.existsSync(this.filePath)
+      ? fs.statSync(this.filePath)
+      : { size: 0 };
     this.offset = stats.size;
-    logger.info({ filePath: this.filePath, offset: this.offset }, "FileLogSource started");
+    logger.info(
+      { filePath: this.filePath, offset: this.offset },
+      "FileLogSource started",
+    );
 
     if (fs.existsSync(this.filePath)) {
       this.attachWatcher();
@@ -84,7 +92,10 @@ export class FileLogSource implements ILogSource {
         encoding: "utf-8",
       });
 
-      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+      const rl = readline.createInterface({
+        input: stream,
+        crlfDelay: Infinity,
+      });
 
       for await (const line of rl) {
         this.processLine(line);
@@ -111,7 +122,10 @@ export class FileLogSource implements ILogSource {
     if (ERROR_PATTERN.test(trimmed)) {
       const errorBlock = this.createErrorBlock(trimmed);
       this.bus.emit("error-detected", errorBlock);
-      getLogger().info({ errorId: errorBlock.id, raw: trimmed }, "Error detected by FileLogSource");
+      getLogger().info(
+        { errorId: errorBlock.id, raw: trimmed },
+        "Error detected by FileLogSource",
+      );
     }
   }
 
@@ -137,7 +151,10 @@ export class FileLogSource implements ILogSource {
 
     this.retryCount++;
     const delay = Math.pow(2, this.retryCount) * 1000;
-    logger.warn({ retryCount: this.retryCount, delayMs: delay }, "Retrying file watcher");
+    logger.warn(
+      { retryCount: this.retryCount, delayMs: delay },
+      "Retrying file watcher",
+    );
 
     setTimeout(() => {
       this.stop();

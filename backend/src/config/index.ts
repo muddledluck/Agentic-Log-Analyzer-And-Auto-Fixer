@@ -24,6 +24,21 @@ export function loadConfig(): AppConfig {
     logLevel: process.env.LOG_LEVEL ?? "info",
     redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
     agentTimeoutMs: parseInt(process.env.AGENT_TIMEOUT_MS ?? "60000", 10),
+
+    // Phase 11: Omni-Channel Log Ingestion
+    enableDockerSource: process.env.ENABLE_DOCKER_SOURCE === "true",
+    enablePm2Source: process.env.ENABLE_PM2_SOURCE === "true",
+    enableWebhookSource: process.env.ENABLE_WEBHOOK_SOURCE === "true",
+    webhookPort: parseInt(process.env.WEBHOOK_PORT ?? "9090", 10),
+    webhookSecretKey: process.env.WEBHOOK_SECRET_KEY ?? "",
+    dockerContainerNames: (process.env.DOCKER_CONTAINER_NAMES ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    pm2ProcessNames: (process.env.PM2_PROCESS_NAMES ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 
   validate(config);

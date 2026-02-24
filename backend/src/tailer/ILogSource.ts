@@ -1,4 +1,7 @@
 export interface ILogSource {
+  /** Unique name describing this source instance */
+  readonly name: string;
+
   /**
    * Start listening/watching the log source.
    */

@@ -36,10 +36,18 @@ describe("Config Module", () => {
     expect(config.crewaiMode).toBe("http");
     expect(config.parserLlmModel).toBe("ollama/llama3");
     expect(config.debuggerLlmModel).toBe("openai/gpt-4o");
-    expect(config.fallbackLlmModel).toBe("gemini/gemini-1.5-pro");
-    expect(config.llmBaseUrl).toBe("http://localhost:11434");
+    expect(config.fallbackLlmModel).toBe("ollama/llama3");
+    expect(config.llmBaseUrl).toBe("http://host.docker.internal:11434");
     expect(config.logLevel).toBe("info");
-  });
+
+    // Phase 11 defaults
+    expect(config.enableDockerSource).toBe(false);
+    expect(config.enablePm2Source).toBe(false);
+    expect(config.enableWebhookSource).toBe(false);
+    expect(config.webhookPort).toBe(9090);
+    expect(config.dockerContainerNames).toEqual([]);
+    expect(config.pm2ProcessNames).toEqual([]);
+  });;
 
   it("should respect custom env vars", async () => {
     process.env.DEDUP_TTL_MS = "60000";

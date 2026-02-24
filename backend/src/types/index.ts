@@ -128,6 +128,15 @@ export interface AppConfig {
   logLevel: string;
   redisUrl: string;
   agentTimeoutMs: number;
+
+  // Phase 11: Omni-Channel Log Ingestion
+  enableDockerSource: boolean;
+  enablePm2Source: boolean;
+  enableWebhookSource: boolean;
+  webhookPort: number;
+  webhookSecretKey: string;
+  dockerContainerNames: string[];
+  pm2ProcessNames: string[];
 }
 
 // ─── Event Map (for typed EventEmitter) ────────────────────────
