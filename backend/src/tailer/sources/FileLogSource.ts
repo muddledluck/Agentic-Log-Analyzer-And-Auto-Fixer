@@ -3,7 +3,7 @@ import readline from "node:readline";
 import crypto from "node:crypto";
 import { EventBus } from "../../events/EventBus.js";
 import { getLogger } from "../../utils/logger.js";
-import type { AppConfig, ErrorBlock } from "../../types/index.js";
+import type { ErrorBlock } from "../../types/index.js";
 import type { ILogSource } from "../ILogSource.js";
 
 const ERROR_PATTERN = /(ERROR|Exception|FATAL)/i;

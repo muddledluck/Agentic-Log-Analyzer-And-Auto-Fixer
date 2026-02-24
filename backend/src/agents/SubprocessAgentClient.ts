@@ -44,7 +44,7 @@ export class SubprocessAgentClient implements IAgentClient {
       action: "parse",
       payload: { rawBlock, contextLines },
       config: {
-        model: this.config.llmModel,
+        model: this.config.parserLlmModel,
         baseUrl: this.config.llmBaseUrl,
       },
     };
@@ -62,7 +62,7 @@ export class SubprocessAgentClient implements IAgentClient {
       action: "debug",
       payload: { parsedError },
       config: {
-        model: this.config.llmModel,
+        model: this.config.debuggerLlmModel,
         baseUrl: this.config.llmBaseUrl,
       },
     };

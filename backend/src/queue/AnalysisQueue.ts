@@ -28,6 +28,7 @@ export class AnalysisQueue {
     });
 
     this.queue = new Queue("error-analysis-queue", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       connection: this.connection as any,
     });
 
@@ -37,9 +38,10 @@ export class AnalysisQueue {
         return this.processJob(job.data);
       },
       {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         connection: this.connection as any,
         concurrency: 2, // Process up to 2 errors concurrently
-      }
+      },
     );
 
     this.setupWorkerEvents();

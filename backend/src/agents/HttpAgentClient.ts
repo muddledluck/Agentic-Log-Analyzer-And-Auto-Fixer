@@ -110,7 +110,6 @@ export class HttpAgentClient implements IAgentClient {
    */
   private async invoke<T>(path: string, request: AgentRequest): Promise<T> {
     const url = `${this.endpoint}${path}`;
-    const logger = getLogger();
 
     try {
       const controller = new AbortController();
