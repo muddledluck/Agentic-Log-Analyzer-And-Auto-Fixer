@@ -864,4 +864,91 @@ flowchart TD
 
 
 ---
+
+## 12. Phase 11: Omni-Channel Log Ingestion
+
+> **Status**: Approved. Ready for implementation.
+
+### 12.1 Overview
+
+Phase 11 implements the adapter stubs created in Phase 7 (§2.8) by building three concrete log source adapters:
+
+| Adapter | Category | Transport | npm Dependency |
+|---------|----------|-----------|----------------|
+| **WebhookLogSource** | Push | HTTP POST receiver | `express` (already in ecosystem) |
+| **DockerLogSource** | Pull | Docker Engine API stream | `dockerode` |
+| **PM2LogSource** | Pull | PM2 IPC Bus | `pm2` |
+
+All adapters implement the existing `ILogSource` interface and emit `ErrorBlock` payloads to the `EventBus`. The downstream pipeline (Orchestrator → Agents → Reports) remains completely unmodified.
+
+### 12.2 Webhook Ingestion Architecture (Push Model)
+
+Cloud providers (AWS CloudWatch, GCP Cloud Logging, Azure Monitor) do **not** stream continuous logs. Instead, they use **Metric Filters** to detect error patterns natively, then fire a single HTTP POST (webhook) containing only the error payload to ALAA's endpoint.
+
+```mermaid
+sequenceDiagram
+    participant CW as Cloud Provider<br/>(CloudWatch / GCP / Azure)
+    participant WH as WebhookLogSource<br/>(Express Route)
+    participant EB as EventBus
+    participant OR as Orchestrator
+
+    CW->>WH: POST /api/webhooks/ingest<br/>{source, rawBlock, timestamp}
+    WH->>WH: Validate signature/token
+    WH->>WH: Normalize payload → ErrorBlock
+    WH->>EB: emit("error-detected", errorBlock)
+    EB->>OR: Pipeline processes error
+```
+
+**Endpoint:** `POST /api/webhooks/ingest`
+- **Auth:** `x-webhook-secret` header validated against `WEBHOOK_SECRET_KEY` env var.
+- **Payload Schema:** Accepts a generic JSON body with `source`, `rawBlock`, and optional `timestamp`.
+- **Cloud Translators:** Internal middleware functions that normalize AWS SNS, GCP Pub/Sub, and Azure Action Group payloads into the generic schema.
+
+### 12.3 Docker Log Streaming Architecture (Pull Model)
+
+```mermaid
+sequenceDiagram
+    participant DE as Docker Engine<br/>(/var/run/docker.sock)
+    participant DLS as DockerLogSource<br/>(dockerode)
+    participant EB as EventBus
+
+    DLS->>DE: GET /containers/{id}/logs?follow=true&stderr=true
+    DE-->>DLS: Multiplexed stream (stdout/stderr)
+    loop On each stderr line
+        DLS->>DLS: Match ERROR_PATTERN
+        DLS->>EB: emit("error-detected", errorBlock)
+    end
+```
+
+### 12.4 PM2 Bus Architecture (Pull Model)
+
+```mermaid
+sequenceDiagram
+    participant PM as PM2 Daemon
+    participant PLS as PM2LogSource<br/>(pm2 bus)
+    participant EB as EventBus
+
+    PLS->>PM: pm2.launchBus()
+    PM-->>PLS: IPC event stream
+    loop On "log:err" or "process:exception"
+        PLS->>PLS: Extract error data
+        PLS->>EB: emit("error-detected", errorBlock)
+    end
+```
+
+### 12.5 Configuration Extensions
+
+New environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_DOCKER_SOURCE` | `false` | Enable Docker log streaming |
+| `ENABLE_PM2_SOURCE` | `false` | Enable PM2 bus listening |
+| `ENABLE_WEBHOOK_SOURCE` | `false` | Enable webhook ingestion endpoint |
+| `WEBHOOK_PORT` | `9090` | Port for the webhook HTTP server |
+| `WEBHOOK_SECRET_KEY` | _(required if enabled)_ | Secret for validating incoming webhooks |
+| `DOCKER_CONTAINER_NAMES` | `""` | Comma-separated container names to monitor |
+| `PM2_PROCESS_NAMES` | `""` | Comma-separated PM2 process names to monitor |
+
+---
 *Navigation: [← 03_mvp_plan.md](./03_mvp_plan.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./05_low_level_design.md)*

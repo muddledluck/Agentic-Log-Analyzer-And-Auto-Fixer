@@ -1526,4 +1526,367 @@ export class AdapterRegistry {
 
 
 ---
+
+## Phase 11: Omni-Channel Log Ingestion — Low-Level Design
+
+### 11.1 Updated `ILogSource` Interface
+
+The existing `ILogSource` interface must be extended for health checking and naming:
+
+```typescript
+// src/tailer/ILogSource.ts
+export interface ILogSource {
+  /** Unique name describing this source instance */
+  readonly name: string;
+
+  /** Start listening/watching the log source */
+  start(): Promise<void>;
+
+  /** Stop watching the log source */
+  stop(): void | Promise<void>;
+}
+```
+
+### 11.2 Updated `AppConfig` (additions only)
+
+```typescript
+// Added to AppConfig in src/types/index.ts
+export interface AppConfig {
+  // ... existing fields ...
+
+  // Phase 11: Omni-Channel Log Ingestion
+  enableDockerSource: boolean;
+  enablePm2Source: boolean;
+  enableWebhookSource: boolean;
+  webhookPort: number;
+  webhookSecretKey: string;
+  dockerContainerNames: string[];  // parsed from comma-separated env var
+  pm2ProcessNames: string[];       // parsed from comma-separated env var
+}
+```
+
+### 11.3 `WebhookLogSource` (`src/tailer/sources/WebhookLogSource.ts`)
+
+The Webhook source is a **Push model** — it spins up a lightweight Express HTTP server to receive error payloads from external systems (AWS SNS, GCP Pub/Sub, Azure Action Groups, or custom scripts).
+
+```typescript
+import express, { type Express, type Request, type Response } from "express";
+import http from "node:http";
+import crypto from "node:crypto";
+import { EventBus } from "../../events/EventBus.js";
+import { getLogger } from "../../utils/logger.js";
+import type { ErrorBlock } from "../../types/index.js";
+import type { ILogSource } from "../ILogSource.js";
+
+// Incoming webhook payload schema
+interface WebhookPayload {
+  source: string;       // e.g. "aws-cloudwatch", "gcp-logging", "custom"
+  rawBlock: string;     // The raw error text / stack trace
+  timestamp?: string;   // ISO 8601 timestamp (optional, defaults to now)
+  contextLines?: string[]; // Optional context
+}
+
+export class WebhookLogSource implements ILogSource {
+  readonly name = "webhook";
+  private app: Express;
+  private server: http.Server | null = null;
+  private port: number;
+  private secretKey: string;
+  private bus: EventBus;
+
+  constructor(port: number, secretKey: string) {
+    this.port = port;
+    this.secretKey = secretKey;
+    this.bus = EventBus.getInstance();
+    this.app = express();
+    this.app.use(express.json());
+    this.setupRoutes();
+  }
+
+  private setupRoutes(): void {
+    // Health check
+    this.app.get("/api/webhooks/health", (_req: Request, res: Response) => {
+      res.json({ status: "ok", source: "webhook" });
+    });
+
+    // Main ingestion endpoint
+    this.app.post("/api/webhooks/ingest", (req: Request, res: Response) => {
+      const logger = getLogger();
+
+      // 1. Validate secret
+      const token = req.headers["x-webhook-secret"] as string;
+      if (token !== this.secretKey) {
+        logger.warn("Webhook rejected: invalid secret");
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      // 2. Parse and validate payload
+      const payload = req.body as WebhookPayload;
+      if (!payload.source || !payload.rawBlock) {
+        res.status(400).json({ error: "Missing required fields: source, rawBlock" });
+        return;
+      }
+
+      // 3. Normalize to ErrorBlock
+      const errorBlock: ErrorBlock = {
+        id: crypto.randomUUID(),
+        raw: payload.rawBlock,
+        contextLines: payload.contextLines ?? [],
+        timestamp: payload.timestamp ?? new Date().toISOString(),
+        source: `webhook://${payload.source}`,
+      };
+
+      // 4. Emit to pipeline
+      this.bus.emit("error-detected", errorBlock);
+      logger.info({ errorId: errorBlock.id, source: payload.source }, "Webhook error ingested");
+
+      res.status(202).json({ accepted: true, errorId: errorBlock.id });
+    });
+  }
+
+  async start(): Promise<void> {
+    return new Promise((resolve) => {
+      this.server = this.app.listen(this.port, () => {
+        getLogger().info({ port: this.port }, "WebhookLogSource listening");
+        resolve();
+      });
+    });
+  }
+
+  stop(): void {
+    if (this.server) {
+      this.server.close();
+      this.server = null;
+    }
+    getLogger().info("WebhookLogSource stopped");
+  }
+}
+```
+
+### 11.4 `DockerLogSource` (`src/tailer/sources/DockerLogSource.ts`)
+
+Uses the `dockerode` npm library to connect to the Docker Engine socket and stream `stderr` from specified containers.
+
+```typescript
+import Docker from "dockerode";
+import crypto from "node:crypto";
+import { EventBus } from "../../events/EventBus.js";
+import { getLogger } from "../../utils/logger.js";
+import type { ErrorBlock } from "../../types/index.js";
+import type { ILogSource } from "../ILogSource.js";
+
+const ERROR_PATTERN = /(ERROR|Exception|FATAL)/i;
+
+export class DockerLogSource implements ILogSource {
+  readonly name: string;
+  private docker: Docker;
+  private containerName: string;
+  private bus: EventBus;
+  private stream: NodeJS.ReadableStream | null = null;
+  private contextBuffer: string[] = [];
+
+  constructor(containerName: string) {
+    this.containerName = containerName;
+    this.name = `docker:${containerName}`;
+    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
+    this.bus = EventBus.getInstance();
+  }
+
+  async start(): Promise<void> {
+    const logger = getLogger();
+    const container = this.docker.getContainer(this.containerName);
+
+    // Verify container exists
+    await container.inspect();
+
+    // Attach to log stream (follow mode, stderr only)
+    this.stream = await container.logs({
+      follow: true,
+      stdout: false,
+      stderr: true,
+      tail: 0, // only new logs
+    });
+
+    // Process log stream line by line
+    let buffer = "";
+    this.stream.on("data", (chunk: Buffer) => {
+      buffer += chunk.toString("utf-8");
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? ""; // keep incomplete line in buffer
+
+      for (const line of lines) {
+        this.processLine(line.trim());
+      }
+    });
+
+    this.stream.on("error", (err) => {
+      logger.error({ err, container: this.containerName }, "Docker stream error");
+    });
+
+    logger.info({ container: this.containerName }, "DockerLogSource started");
+  }
+
+  private processLine(line: string): void {
+    if (!line) return;
+
+    this.contextBuffer.push(line);
+    if (this.contextBuffer.length > 10) this.contextBuffer.shift();
+
+    if (ERROR_PATTERN.test(line)) {
+      const errorBlock: ErrorBlock = {
+        id: crypto.randomUUID(),
+        raw: line,
+        contextLines: [...this.contextBuffer],
+        timestamp: new Date().toISOString(),
+        source: `docker://${this.containerName}`,
+      };
+      this.bus.emit("error-detected", errorBlock);
+      getLogger().info({ errorId: errorBlock.id }, "Docker error detected");
+    }
+  }
+
+  stop(): void {
+    if (this.stream) {
+      this.stream.destroy();
+      this.stream = null;
+    }
+    getLogger().info({ container: this.containerName }, "DockerLogSource stopped");
+  }
+}
+```
+
+### 11.5 `PM2LogSource` (`src/tailer/sources/PM2LogSource.ts`)
+
+Uses the `pm2` npm package to connect to the PM2 daemon's IPC bus and listen for error events.
+
+```typescript
+import pm2 from "pm2";
+import crypto from "node:crypto";
+import { EventBus } from "../../events/EventBus.js";
+import { getLogger } from "../../utils/logger.js";
+import type { ErrorBlock } from "../../types/index.js";
+import type { ILogSource } from "../ILogSource.js";
+
+export class PM2LogSource implements ILogSource {
+  readonly name: string;
+  private processName: string;
+  private bus: EventBus;
+  private connected: boolean = false;
+
+  constructor(processName: string) {
+    this.processName = processName;
+    this.name = `pm2:${processName}`;
+    this.bus = EventBus.getInstance();
+  }
+
+  async start(): Promise<void> {
+    const logger = getLogger();
+
+    return new Promise((resolve, reject) => {
+      pm2.connect((err) => {
+        if (err) {
+          logger.error({ err }, "Failed to connect to PM2 daemon");
+          reject(err);
+          return;
+        }
+        this.connected = true;
+
+        pm2.launchBus((err, bus) => {
+          if (err) {
+            logger.error({ err }, "Failed to launch PM2 bus");
+            reject(err);
+            return;
+          }
+
+          // Listen for error log events
+          bus.on("log:err", (packet: { process: { name: string }; data: string }) => {
+            if (packet.process.name === this.processName || this.processName === "*") {
+              this.handleError(packet.data, packet.process.name);
+            }
+          });
+
+          // Listen for uncaught exceptions
+          bus.on("process:exception", (packet: { process: { name: string }; data: { message: string; stack?: string } }) => {
+            if (packet.process.name === this.processName || this.processName === "*") {
+              const raw = packet.data.stack ?? packet.data.message;
+              this.handleError(raw, packet.process.name);
+            }
+          });
+
+          logger.info({ processName: this.processName }, "PM2LogSource connected to bus");
+          resolve();
+        });
+      });
+    });
+  }
+
+  private handleError(rawData: string, processName: string): void {
+    const errorBlock: ErrorBlock = {
+      id: crypto.randomUUID(),
+      raw: rawData,
+      contextLines: [],
+      timestamp: new Date().toISOString(),
+      source: `pm2://${processName}`,
+    };
+    this.bus.emit("error-detected", errorBlock);
+    getLogger().info({ errorId: errorBlock.id, process: processName }, "PM2 error detected");
+  }
+
+  stop(): void {
+    if (this.connected) {
+      pm2.disconnect();
+      this.connected = false;
+    }
+    getLogger().info({ processName: this.processName }, "PM2LogSource stopped");
+  }
+}
+```
+
+### 11.6 Updated `AdapterRegistry` (`src/tailer/AdapterRegistry.ts`)
+
+The registry must read the new config flags and conditionally construct the adapters:
+
+```typescript
+import type { ILogSource } from "./ILogSource.js";
+import { FileLogSource } from "./sources/FileLogSource.js";
+import { DockerLogSource } from "./sources/DockerLogSource.js";
+import { PM2LogSource } from "./sources/PM2LogSource.js";
+import { WebhookLogSource } from "./sources/WebhookLogSource.js";
+import type { AppConfig } from "../types/index.js";
+import { getLogger } from "../utils/logger.js";
+
+export class AdapterRegistry {
+  private sources: ILogSource[] = [];
+
+  constructor(config: AppConfig) {
+    // Always register FileLogSource
+    this.register(new FileLogSource(config.logFilePath));
+
+    // Conditionally register Docker sources
+    if (config.enableDockerSource && config.dockerContainerNames.length > 0) {
+      for (const name of config.dockerContainerNames) {
+        this.register(new DockerLogSource(name));
+      }
+    }
+
+    // Conditionally register PM2 sources
+    if (config.enablePm2Source && config.pm2ProcessNames.length > 0) {
+      for (const name of config.pm2ProcessNames) {
+        this.register(new PM2LogSource(name));
+      }
+    }
+
+    // Conditionally register Webhook source
+    if (config.enableWebhookSource) {
+      this.register(new WebhookLogSource(config.webhookPort, config.webhookSecretKey));
+    }
+  }
+
+  // ... existing register(), startAll(), stopAll() methods unchanged ...
+}
+```
+
+
+---
 *Navigation: [← 04_high_level_design.md](./04_high_level_design.md) | [Main Index](../README.md#📚-architecture-documentation-index) | [Next Document →](./06_backend_v2_extensions.md)*
