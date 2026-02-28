@@ -67,10 +67,10 @@ To transform into a highly scalable SaaS platform, the architecture is split int
 **Purpose:** This is the high-throughput gateway of the system. It handles all incoming traffic from user environments and serves the Web Dashboard. Not meant for long-running computation.
 **Why Node.js?:** Node.js excels at handling massive amounts of asynchronous I/O (like thousands of simultaneous incoming HTTP webhooks) with low memory overhead.
 - **Detailed Responsibilities:**
-  - **Ingestion (`/api/webhooks/ingest`):** Rapidly receives POST requests containing error logs. It immediately validates the `x-api-key` against PostgreSQL to ensure the request belongs to an active, paying Customer and associates it with the correct `ProjectId`.
-  - **Deduplication (Redis):** Executes the `RedisDedupeService`. If an identical error hash for the same `ProjectId` was seen in the last 5 minutes, it drops the request instantly. This prevents log floods from crippling the AI service.
-  - **Queueing (BullMQ):** If the error is unique and valid, it creates a lightweight job on the Redis queue and returns `202 Accepted` to the client. It *does not* wait for the AI to process the error.
-  - **Dashboard APIs:** Serves standard RESTful endpoints to the Frontend for Auth, Project Management, and fetching Reports via Prisma ORM querying PostgreSQL.
+  - **Ingestion (`/api/webhooks/ingest`):** Rapidly receives POST requests. Hashes the incoming `x-api-key` and strictly validates against a unique, indexed hash column in PostgreSQL. 
+  - **Deduplication (Redis):** Executes the `RedisDedupeService` first. If an identical error hash for the same `ProjectId` was seen recently, it drops the request.
+  - **Queueing (BullMQ):** To prevent database connection exhaustion during log bursts, the gateway **does not** immediately execute an `INSERT` into PostgreSQL. It pushes the raw log payload straight to BullMQ and quickly returns `202 Accepted`. Background workers process the database writes at a controlled pace.
+  - **Dashboard APIs:** Serves standard RESTful endpoints to the Frontend. All routes enforce strict logical data isolation by consistently applying `where: { projectId: currentContextProjectId }` via Prisma.
 
 ### 3.2 SaaS Web UI (Next.js or React)
 **Layer Type:** Client Presentation
@@ -97,9 +97,10 @@ To transform into a highly scalable SaaS platform, the architecture is split int
 **Purpose:** The heavy-lifting intelligence engine. Separated from the Node.js backend because interacting with LLMs takes time (seconds to minutes) and would block the event loop of a Node.js web server. 
 **Why Python?:** Python is the industry standard for AI orchestration and has the best support for CrewAI, LiteLLM, and data processing libraries.
 - **Detailed Responsibilities:**
-  - **Job Polling:** Continuously listens to BullMQ for new `ErrorEvent` jobs placed there by the Node.js ingestion gateway.
-  - **Multi-Agent Orchestration:** When a job arrives, it spun up the `ParserAgent` to clean the stack trace and the `DebuggerAgent` to consult the LLM for a root-cause analysis.
-  - **State Persistence:** Once the AI finishes generating the Markdown report, this Service directly executes an `INSERT` command into PostgreSQL, attaching the `Report` to the original `ErrorEvent` row so it immediately becomes visible on the SaaS Web UI.
+  - **Job Polling & Backoffs:** Continuously listens to BullMQ. To handle LLM rate limits or transient network outages gracefully, the worker is configured with exponential backoff retries (e.g., retrying after 10s, 30s, 2m).
+  - **State Persistence:** As the first step of processing, the background worker creates the `ErrorEvent` row in PostgreSQL securely. 
+  - **Multi-Agent Orchestration:** It spins up the `ParserAgent` and `DebuggerAgent` to consult the LLM for a root-cause analysis based on the error stack trace.
+  - **Reporting:** Finally, it executes an `INSERT` command into PostgreSQL, attaching the completed `Report` to the original `ErrorEvent` so it becomes visible on the SaaS Web UI.
 
 ---
 
@@ -134,10 +135,11 @@ erDiagram
     }
 
     ApiKey {
-        string key PK "e.g., alaa_123xyz"
+        uuid id PK
+        string keyHash "SHA-256 hash of the key"
+        string partialKey "e.g., alaa_...wxyz"
         uuid projectId FK
         datetime createdAt
-        datetime expiresAt
     }
 
     ErrorEvent {
@@ -178,10 +180,10 @@ erDiagram
   }
   ```
 - **Behavior:** 
-  1. Lookup `$PROJECT_API_KEY` in DB. Abort 401 if invalid.
-  2. Hash `rawBlock`. Check Redis for `dedup:{projectId}:{hash}`. Abort 202 if duplicate.
-  3. Create `ErrorEvent` in Postgres.
-  4. Push to BullMQ stringified payload.
+  1. Hash incoming `$PROJECT_API_KEY` and lookup against DB (`keyHash`). Abort 401 if invalid.
+  2. Hash `rawBlock`. Check for `dedup:{projectId}:{hash}` in Redis. Abort 202 if duplicate.
+  3. Push payload to BullMQ. *(Immediate DB inserts are bypassed to protect the connection pool from burst traffic).*
+  4. Return `202 Accepted`.
 
 ### 5.2 Dashboard APIs (Frontend ➔ Backend)
 
@@ -202,8 +204,9 @@ erDiagram
 
 ---
 
-## 6. Non-Functional Requirements
+## 6. Non-Functional Requirements & Mitigation Strategies
 
-- **Security:** API Keys must be cryptographically generated and securely stored (hashed if necessary, though read-often keys are typically stored plain or symmetrically encrypted depending on threat model; MVP will use indexed plain strings with high entropy). JWT for dashboard sessions.
-- **Scalability:** The NodeJS ingestion layer must be stateless (besides Redis) to scale horizontally under log flood conditions.
-- **Reliability:** Redis is mandatory. If Redis goes down, Deduplication fails open (allows all logs) but logs a severe alert, relying on the Queue to buffer the load.
+- **API Key Security (Critical):** API keys must be treated like user passwords. They are generated cryptographically, shown to the user exactly once on the dashboard, and stored uniquely as a one-way hash (SHA-256) in PostgreSQL. The ingestion webhook hashes incoming header values to compare against the database.
+- **Multi-Tenant Data Isolation:** For MVP scale, standard logical separation is used over PostgreSQL Row-Level Security (RLS). Strict data access patterns will enforce `where: { projectId: X }` constraints across all ORM queries to prevent tenant leakage.
+- **Log Burst Resilience:** The ingestion gateway never executes synchronous ORM inserts for incoming logs. To prevent database connection exhaustion, payloads are deduplicated via Redis and buffered entirely via BullMQ queueing. Background workers handle the DB inserts at a steady, controlled rate.
+- **Data Retention & Pruning:** To prevent PostgreSQL bloat over time and maintain high query performance, a scheduled background job (e.g., node-cron or BullMQ repeatable job) will routinely prune stale data (e.g., `DELETE FROM ErrorEvents WHERE createdAt < NOW() - INTERVAL '30 days'`).
