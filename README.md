@@ -1,24 +1,26 @@
-# ALAA — Agentic Log Analyzer & Auto-Fixer
+# ALAA — Agentic Log Analyzer & Auto-Fixer (SaaS Platform)
 
-ALAA is a backend service powered by AI agents (using [CrewAI](https://www.crewai.com/) and [Ollama](https://ollama.com/)) that automatically monitors application logs in real-time, detects errors, analyzes the root cause, and generates detailed Markdown diagnostic reports with suggested code fixes.
+ALAA is a **Multi-Tenant SaaS Platform** powered by AI agents (using [CrewAI](https://www.crewai.com/) and [Ollama](https://ollama.com/)) that automatically monitors application logs from remote servers, detects errors, analyzes the root cause, and generates detailed Markdown diagnostic reports with suggested code fixes.
 
 ## 🌟 Features
 
-- **Real-time Tail Logging:** Uses efficient Node.js filesystem watchers to stream log files without reading the entire file memory.
-- **Deduplication Engine:** Prevents duplicate AI analysis using SHA-256 error signature hashing and a configurable Time-To-Live (TTL) cache.
+- **Multi-Tenant Architecture:** Securely manages multiple Organizations and Projects, providing isolated API Keys for error log forwarding.
+- **Omni-Channel Log Ingestion:** Ingests errors via a centralized Webhook API from lightweight edge agents running on Docker, PM2, or local `.log` files.
+- **Log Burst Resilience:** Protects downstream AI resources by deduplicating noise via Redis and buffering workloads in a persistent BullMQ queue.
 - **AI Dual-Agent Architecture:**
   - **Parser Agent:** Cleans raw log text and extracts structured data (error type, stack frames, context).
   - **Debugger Agent:** Analyzes the structured error, infers root causes across the stack, and generates copy-pasteable code fixes.
 - **Local Privacy-First AI:** Built to run entirely locally using `llama3` via Ollama for zero-cost, privacy-respecting LLM inference.
-- **Rich Markdown Reports:** Outputs detailed post-mortem documents for developers directly into a `/reports` folder.
+- **Responsive Web Dashboard:** A Next.js frontend for developers to manage their API Keys and view real-time AI resolution reports.
 
 ## 🏗️ Architecture Stack
 
-- **Orchestrator (Backend):** Node.js, TypeScript, EventBus, Redis, BullMQ.
-- **AI Microservice:** Python 3, FastAPI, CrewAI, LiteLLM.
+- **SaaS Backend (`Node.js`):** TypeScript, Express, Prisma (PostgreSQL), Redis, BullMQ. Manages all State, Auth, Queueing, and API Key validation.
+- **SaaS Web UI (`Next.js`):** React dashboard for project oversight and report viewing.
+- **AI Microservice (`Python`):** A **100% Stateless** FastAPI endpoint orchestrating CrewAI and LiteLLM.
 - **LLM Provider:** Ollama (`llama3` default) or any LiteLLM-compatible API (e.g. OpenAI).
 
-Our backend is completely decoupled: the Python AI service runs as a standalone FastAPI microservice (`alaa-ai-service`) and is **never** imported into the Node.js backend. Instead, the Node.js Core Engine manages the file tailing and deduplication, and schedules API workloads into a resilient BullMQ queue cluster which issues HTTP requests to the Python compute layer.
+Our architecture rigidly follows the KISS principle: The Node.js Core Backend handles all database mutations (PostgreSQL) and queue operations (BullMQ). The Python AI service operates purely as an isolated, stateless compute function (`POST /analyze`) invoked synchronously by the Node.js Background Workers.
 
 ## 📋 Prerequisites
 
@@ -46,6 +48,7 @@ For a deep dive into the system's design, consult the sequentially numbered docu
 7. **[07_multi_agent_spec.md](./docs/07_multi_agent_spec.md)** - Specifications for Python microservice extraction
 8. **[08_multi_agent_lld.md](./docs/08_multi_agent_lld.md)** - Low-level design for Python refactor
 9. **[09_llm_routing_strategy.md](./docs/09_llm_routing_strategy.md)** - Architectural rationale for multi-model fallback
+10. **[SaaS High-Level Design](./docs/saas/hld.md)** - Full blueprint for the Multi-Tenant Cloud Architecture (Phase 12+)
 
 ## 🚀 Setup & Installation
 
@@ -86,28 +89,22 @@ Make sure your environment variables are configured. (Copy the `.env.example` fi
 
 ```text
 alaa/
-├── alaa-ai-service/                 # 100% Isolated Python Compute Layer
+├── saas/                            # SaaS Platform Ecosystem
+│   ├── backend/                     # Node.js REST API + Background Workers (Prisma/BullMQ)
+│   └── frontend/                    # Next.js Web Dashboard 
+├── alaa-ai-service/                 # 100% Stateless Python Compute Layer
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── app/                         # Modular FastAPI Application
-│       ├── main.py                  # FastAPI Application Entry
-│       ├── api/                     # API Routers & Endpoints
+│       ├── main.py                  # POST /analyze Endpoint
 │       ├── core/                    # Config & LLM Routing Logic
 │       ├── models/                  # Pydantic Schemas
 │       ├── services/                # CrewAI Orchestration
 │       └── agents/                  # Prompts & Task Definitions
-├── backend/                         # Node.js Core Engine
-│   ├── src/
-│   │   ├── index.ts                 # Application entry point
-│   │   ├── config/                  # Environment validation
-│   │   ├── tailer/                  # fs.watch Log tailing & Adapters
-│   │   ├── orchestrator/            # Pipeline manager
-│   │   ├── queue/                   # BullMQ workers for AI dispatch
-│   │   ├── reporter/                # Markdown builder
-│   │   └── agents/                  # HttpAgentClient for REST invocations
-├── docs/                            # Internal Architecture specs (HLD/LLD)
-├── docker-compose.yml               # Orchestrates Redis + ai-service
-└── system.log                       # Local application log (mock target)
+├── backend/                         # (Legacy) V1 Local CLI Backend
+├── docs/                            # Architecture specs (HLD/LLD)
+│   └── saas/                        # SaaS specific documentation
+└── docker-compose.yml               # Orchestrates Redis + Postgres + ai-service
 ```
 
 ## 🧪 Testing
