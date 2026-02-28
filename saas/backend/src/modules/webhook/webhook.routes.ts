@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ingestError } from '../controllers/webhook.controller';
+import { ingestError } from './webhook.controller';
 
 const router = Router();
 

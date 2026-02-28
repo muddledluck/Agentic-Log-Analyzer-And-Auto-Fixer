@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import { redisClient } from '../config/redis';
+import { redisClient } from '../../config/redis';
 
 export interface IngestionJobPayload {
   projectId: string;

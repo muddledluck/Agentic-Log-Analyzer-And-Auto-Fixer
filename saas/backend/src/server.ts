@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import { env } from './config/env';
-import authRoutes from './routes/auth.routes';
-import projectRoutes from './routes/project.routes';
-import webhookRoutes from './routes/webhook.routes';
+import authRoutes from "./modules/auth/auth.routes";
+import projectRoutes from "./modules/project/project.routes";
+import webhookRoutes from "./modules/webhook/webhook.routes";
 
-import './queue/IngestionWorker';
+import "./modules/webhook/IngestionWorker";
 
 const app = express();
 

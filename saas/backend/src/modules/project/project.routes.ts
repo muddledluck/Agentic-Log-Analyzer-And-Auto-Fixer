@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getProjects, createProject } from '../controllers/project.controller';
-import { createApiKey } from '../controllers/apiKey.controller';
-import { requireAuth } from '../middlewares/auth.middleware';
+import { getProjects, createProject } from './project.controller';
+import { createApiKey } from './apiKey.controller';
+import { requireAuth } from '../../shared/middlewares/auth.middleware';
 
 const router = Router();
 

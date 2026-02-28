@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { redisClient } from '../config/redis';
-import prisma from '../utils/prisma';
+import { redisClient } from '../../config/redis';
+import prisma from '../../shared/utils/prisma';
 import { IngestionJobPayload } from './IngestionQueue';
 
 // Placeholder for future HTTP POST to the Python AI stateless service

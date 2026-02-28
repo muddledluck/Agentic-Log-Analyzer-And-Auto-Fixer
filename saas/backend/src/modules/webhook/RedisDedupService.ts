@@ -1,4 +1,4 @@
-import { redisClient } from '../config/redis';
+import { redisClient } from '../../config/redis';
 import crypto from 'crypto';
 
 export class RedisDedupService {

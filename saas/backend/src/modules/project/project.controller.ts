@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import prisma from '../utils/prisma';
+import prisma from '../../shared/utils/prisma';
 
 export const getProjects = async (req: Request, res: Response): Promise<void> => {
   try {

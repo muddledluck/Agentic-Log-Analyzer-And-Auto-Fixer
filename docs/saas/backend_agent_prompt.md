@@ -66,4 +66,4 @@ Please execute the following steps sequentially. Document your progress in stand
 3. **Resilience:** Configure the worker with exponential backoff retries for future AI rate limits.
 
 ---
-**Agent Instruction:** Please confirm when you have read this prompt and are ready to begin Step 1. Focus strongly on clean, layered code structure (Controllers vs Services) from the beginning.
+**Agent Instruction:** Please confirm when you have read this prompt and are ready to begin Step 1. Focus strongly on a clean, module-based folder structure (e.g., `src/modules/auth`, `src/modules/webhook` with co-located controllers, routes, and services) from the beginning.

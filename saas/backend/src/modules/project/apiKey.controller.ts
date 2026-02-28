@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import prisma from '../utils/prisma';
+import prisma from '../../shared/utils/prisma';
 
 export const createApiKey = async (req: Request, res: Response): Promise<void> => {
   try {
