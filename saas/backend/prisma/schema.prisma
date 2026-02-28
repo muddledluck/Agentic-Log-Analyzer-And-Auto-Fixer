@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
+model Organization {
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  users     User[]
+  projects  Project[]
+}
+
+model Project {
+  id             String       @id @default(uuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  apiKeys        ApiKey[]
+  errorEvents    ErrorEvent[]
+}
+
+model ApiKey {
+  id         String   @id @default(uuid())
+  keyHash    String   @unique
+  partialKey String
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model ErrorEvent {
+  id           String   @id @default(uuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  rawMessage   String
+  contextLines Json
+  timestamp    DateTime
+  status       String   @default("pending") // "pending", "resolved"
+  report       Report?
+}
+
+model Report {
+  id           String     @id @default(uuid())
+  errorEventId String     @unique
+  errorEvent   ErrorEvent @relation(fields: [errorEventId], references: [id])
+  markdownBody String
+  createdAt    DateTime   @default(now())
+}
