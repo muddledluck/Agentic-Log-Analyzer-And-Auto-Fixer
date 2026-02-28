@@ -24,6 +24,7 @@ graph TD
     subgraph SaaS Cloud Infrastructure
         subgraph Node.js Backend 
             GW[Ingestion Gateway<br/>/api/webhooks/ingest]
+            BW[Background Worker<br/>BullMQ Consumer]
             API[REST API<br/>Auth / Projects / Reports]
         end
 
@@ -34,7 +35,7 @@ graph TD
         end
 
         subgraph AI AI Service
-            AI[Python FastAPI App<br/>CrewAI Agents]
+            AI[Python FastAPI App<br/>Stateless POST /analyze]
             LLM((LLM Endpoints<br/>OpenAI/Ollama/Gemini))
         end
         
@@ -47,9 +48,12 @@ graph TD
         GW -- Check Duplicate --> RD
         GW -- Push Job --> MQ
         
-        MQ -- Pull Job --> AI
+        MQ -- Pull Job --> BW
+        BW -- Create ErrorEvent --> DB
+        BW -- Sync HTTP POST --> AI
         AI -- Query / Prompt --> LLM
-        AI -- Save Report --> DB
+        AI -- Return Markdown --> BW
+        BW -- Save Report --> DB
         
         UI -- REST Calls --> API
         API -- Read/Write --> DB
@@ -63,13 +67,14 @@ graph TD
 To transform into a highly scalable SaaS platform, the architecture is split into four distinct layers. Each layer has specific, decoupled responsibilities to ensure the system can scale under heavy load.
 
 ### 3.1 SaaS Backend (Node.js / Express / Prisma)
-**Layer Type:** Ingestion Gateway & REST API
-**Purpose:** This is the high-throughput gateway of the system. It handles all incoming traffic from user environments and serves the Web Dashboard. Not meant for long-running computation.
-**Why Node.js?:** Node.js excels at handling massive amounts of asynchronous I/O (like thousands of simultaneous incoming HTTP webhooks) with low memory overhead.
+**Layer Type:** Ingestion Gateway, REST API, & Background Worker
+**Purpose:** This is the core operational engine. It handles all incoming webhooks, serves the Dashboard APIs, and manages all state mutation via Prisma.
+**Why Node.js?:** Node.js excels at asynchronous I/O. Its event-driven nature easily handles thousands of simultaneous webhooks, queue connections, and HTTP requests to the AI without blocking.
 - **Detailed Responsibilities:**
   - **Ingestion (`/api/webhooks/ingest`):** Rapidly receives POST requests. Hashes the incoming `x-api-key` and strictly validates against a unique, indexed hash column in PostgreSQL. 
   - **Deduplication (Redis):** Executes the `RedisDedupeService` first. If an identical error hash for the same `ProjectId` was seen recently, it drops the request.
-  - **Queueing (BullMQ):** To prevent database connection exhaustion during log bursts, the gateway **does not** immediately execute an `INSERT` into PostgreSQL. It pushes the raw log payload straight to BullMQ and quickly returns `202 Accepted`. Background workers process the database writes at a controlled pace.
+  - **Queueing (BullMQ):** To prevent database connection exhaustion during log bursts, the gateway **does not** immediately execute an `INSERT` into PostgreSQL. It pushes the raw log payload straight to BullMQ and quickly returns `202 Accepted`.
+  - **Background Worker:** A dedicated Node.js worker pulls jobs from BullMQ. It safely inserts the `ErrorEvent` into PostgreSQL, makes a synchronous HTTP POST to the Python AI Service, and upon receiving the Markdown response, saves the final `Report` to PostgreSQL.
   - **Dashboard APIs:** Serves standard RESTful endpoints to the Frontend. All routes enforce strict logical data isolation by consistently applying `where: { projectId: currentContextProjectId }` via Prisma.
 
 ### 3.2 SaaS Web UI (Next.js or React)
@@ -93,14 +98,13 @@ To transform into a highly scalable SaaS platform, the architecture is split int
   - Collects surrounding context lines and fires an HTTP POST to our SaaS Ingestion Gateway (`/api/webhooks/ingest`), attaching the customer's `x-api-key` in the header for authentication.
 
 ### 3.4 AI Service (Python / FastAPI / CrewAI)
-**Layer Type:** Asynchronous Processing & AI Orchestration
-**Purpose:** The heavy-lifting intelligence engine. Separated from the Node.js backend because interacting with LLMs takes time (seconds to minutes) and would block the event loop of a Node.js web server. 
+**Layer Type:** Stateless AI Processing Engine
+**Purpose:** A completely decoupled and stateless microservice designed purely to orchestrate LLMs and generate debugging reports on demand.
 **Why Python?:** Python is the industry standard for AI orchestration and has the best support for CrewAI, LiteLLM, and data processing libraries.
 - **Detailed Responsibilities:**
-  - **Job Polling & Backoffs:** Continuously listens to BullMQ. To handle LLM rate limits or transient network outages gracefully, the worker is configured with exponential backoff retries (e.g., retrying after 10s, 30s, 2m).
-  - **State Persistence:** As the first step of processing, the background worker creates the `ErrorEvent` row in PostgreSQL securely. 
-  - **Multi-Agent Orchestration:** It spins up the `ParserAgent` and `DebuggerAgent` to consult the LLM for a root-cause analysis based on the error stack trace.
-  - **Reporting:** Finally, it executes an `INSERT` command into PostgreSQL, attaching the completed `Report` to the original `ErrorEvent` so it becomes visible on the SaaS Web UI.
+  - **Stateless Endpoint (`POST /analyze`):** Exposes a simple internal HTTP endpoint. It receives the stack trace and log context directly from the Node.js Background Worker.
+  - **Multi-Agent Orchestration:** It spins up the `ParserAgent` to clean the stack trace and the `DebuggerAgent` to consult the LLM for a root-cause analysis based on the error context.
+  - **Direct Response:** Retries and timeouts are handled completely by the Node.js worker layer. The Python service simply executes the CrewAI process and returns the fully formatted Markdown report back as its HTTP response payload. It has absolutely zero database or queue connections.
 
 ---
 
@@ -208,5 +212,5 @@ erDiagram
 
 - **API Key Security (Critical):** API keys must be treated like user passwords. They are generated cryptographically, shown to the user exactly once on the dashboard, and stored uniquely as a one-way hash (SHA-256) in PostgreSQL. The ingestion webhook hashes incoming header values to compare against the database.
 - **Multi-Tenant Data Isolation:** For MVP scale, standard logical separation is used over PostgreSQL Row-Level Security (RLS). Strict data access patterns will enforce `where: { projectId: X }` constraints across all ORM queries to prevent tenant leakage.
-- **Log Burst Resilience:** The ingestion gateway never executes synchronous ORM inserts for incoming logs. To prevent database connection exhaustion, payloads are deduplicated via Redis and buffered entirely via BullMQ queueing. Background workers handle the DB inserts at a steady, controlled rate.
+- **Log Burst Resilience:** The ingestion gateway never executes synchronous ORM inserts for incoming logs. To prevent database connection exhaustion, payloads are deduplicated via Redis and buffered entirely via BullMQ queueing. The Node.js Background Worker handles the DB inserts and AI coordination at a steady, controlled rate, leveraging BullMQ's exponential backoff to recover gracefully if the Stateless AI Service or external LLMs encounter transient rate limits.
 - **Data Retention & Pruning:** To prevent PostgreSQL bloat over time and maintain high query performance, a scheduled background job (e.g., node-cron or BullMQ repeatable job) will routinely prune stale data (e.g., `DELETE FROM ErrorEvents WHERE createdAt < NOW() - INTERVAL '30 days'`).
