@@ -6,6 +6,7 @@ ALAA is a **multi-tenant SaaS platform** that ingests error logs, analyzes root 
 
 - **Multi-tenant API:** Organizations, projects, and hashed API keys for log ingestion.
 - **Webhook ingestion:** `POST /api/webhooks/ingest` with Redis deduplication and BullMQ buffering.
+- **Dashboard APIs (JWT):** `GET /api/projects/:id/events` (paginated error feed) and `GET /api/projects/:id/events/:eventId/report` (AI Markdown when ready).
 - **AI pipeline:** Parser + debugger agents in a stateless Python service (`alaa-ai-service`).
 - **Legacy local runner (optional):** The `backend/` package can tail files, PM2, Docker, or a local webhook and write reports to disk — useful for development without the full SaaS stack.
 
