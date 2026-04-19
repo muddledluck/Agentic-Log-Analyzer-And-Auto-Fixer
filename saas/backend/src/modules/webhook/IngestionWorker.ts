@@ -1,15 +1,9 @@
 import { Worker, Job } from 'bullmq';
+import { AiServiceClient } from "../../shared/services/AiServiceClient";
 import { redisClient } from '../../config/redis';
 import prisma from '../../shared/utils/prisma';
 import { IngestionJobPayload } from './IngestionQueue';
 
-// Placeholder for future HTTP POST to the Python AI stateless service
-const mockPostToAIService = async (errorEventId: string, payload: any): Promise<string> => {
-  console.log(`[BackgroundWorker] Mocking sync HTTP POST to Python AI for Event: ${errorEventId}...`);
-  // Simulate network delay for AI generation
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  return `## AI Root Cause Analysis\n\nThis is a mock response for error event \`${errorEventId}\`\n\n**Raw Block:**\n\`\`\`\n${payload.rawBlock}\n\`\`\``;
-};
 
 export const ingestionWorker = new Worker<IngestionJobPayload, any, string>(
   'error-ingestion-queue',
@@ -25,12 +19,15 @@ export const ingestionWorker = new Worker<IngestionJobPayload, any, string>(
           rawMessage: `[${source}] ${rawBlock}`,
           timestamp: new Date(timestamp),
           contextLines: contextLines || [],
-          status: 'pending',
+          status: "pending",
         },
       });
 
-      // 2. Synchronous HTTP POST to Python AI
-      const markdownBody = await mockPostToAIService(errorEvent.id, job.data);
+      // 2. Synchronous HTTP POST to Python AI (via decoupled Service Client)
+      const markdownBody = await AiServiceClient.analyzeError(
+        errorEvent.id,
+        job.data,
+      );
 
       // 3. Save Final Report to Postgres
       await prisma.report.create({
@@ -43,10 +40,12 @@ export const ingestionWorker = new Worker<IngestionJobPayload, any, string>(
       // 4. Update Event Status
       await prisma.errorEvent.update({
         where: { id: errorEvent.id },
-        data: { status: 'resolved' },
+        data: { status: "resolved" },
       });
 
-      console.log(`[BackgroundWorker] Successfully processed job ${job.id}. Report saved.`);
+      console.log(
+        `[BackgroundWorker] Successfully processed job ${job.id}. Report saved.`,
+      );
     } catch (error) {
       console.error(`[BackgroundWorker] Job ${job.id} failed:`, error);
       throw error; // Let BullMQ handle exponential backoffs

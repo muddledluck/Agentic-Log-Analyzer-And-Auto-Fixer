@@ -6,6 +6,7 @@ import os from "node:os";
 // We need to test loadConfig directly, so we'll manipulate env vars
 describe("Config Module", () => {
   const originalEnv = { ...process.env };
+  const originalCwd = process.cwd();
   let tmpDir: string;
   let tmpLogFile: string;
 
@@ -15,13 +16,21 @@ describe("Config Module", () => {
     tmpLogFile = path.join(tmpDir, "test.log");
     fs.writeFileSync(tmpLogFile, "");
 
-    // Reset env
+    // So dotenv does not load repo `backend/.env` during loadConfig()
+    process.chdir(tmpDir);
+
+    // Reset env (isolate from shell exports like FALLBACK_LLM_MODEL)
     process.env = { ...originalEnv };
+    delete process.env.FALLBACK_LLM_MODEL;
+    delete process.env.PARSER_LLM_MODEL;
+    delete process.env.DEBUGGER_LLM_MODEL;
+    delete process.env.LLM_BASE_URL;
     process.env.LOG_FILE_PATH = tmpLogFile;
     process.env.REPORT_DIR = path.join(tmpDir, "reports");
   });
 
   afterEach(() => {
+    process.chdir(originalCwd);
     process.env = originalEnv;
     // Clean up temp files
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -35,9 +44,9 @@ describe("Config Module", () => {
     expect(config.dedupTtlMs).toBe(300000);
     expect(config.crewaiMode).toBe("http");
     expect(config.parserLlmModel).toBe("ollama/llama3");
-    expect(config.debuggerLlmModel).toBe("openai/gpt-4o");
-    expect(config.fallbackLlmModel).toBe("ollama/llama3");
-    expect(config.llmBaseUrl).toBe("http://host.docker.internal:11434");
+    expect(config.debuggerLlmModel).toBe("ollama/llama3");
+    expect(config.fallbackLlmModel).toBeUndefined();
+    expect(config.llmBaseUrl).toBe("http://localhost:11434");
     expect(config.logLevel).toBe("info");
 
     // Phase 11 defaults

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine
@@ -9,6 +7,19 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: alaa-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: alaa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   alaa-ai-service:
@@ -26,3 +37,4 @@ services:
 
 volumes:
   redis_data:
+  postgres_data:

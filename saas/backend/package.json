@@ -4,14 +4,18 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "verify:reports": "node scripts/verify-reports.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/client": "^7.4.2",
+    "@prisma/client": "^6.19.2",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.70.1",
     "cors": "^2.8.6",
@@ -19,6 +23,8 @@
     "express": "^5.2.1",
     "ioredis": "^5.10.0",
     "jsonwebtoken": "^9.0.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -27,7 +33,9 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.2",
-    "prisma": "^7.4.2",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-# ─── Core Domain Models (CrewAI outputs) ──────────────────────
+# ─── Core domain models (LLM JSON → Pydantic) ─────────────────
 
 class StackFrameModel(BaseModel):
     """A single stack frame from an error trace."""
@@ -55,6 +55,15 @@ class ParsePayload(BaseModel):
 
 class ParseRequest(BaseModel):
     payload: ParsePayload
+    config: ConfigModel
+
+class AnalyzePayload(BaseModel):
+    error_event_id: str
+    raw_message: str
+    context: List[str]
+
+class AnalyzeRequest(BaseModel):
+    payload: AnalyzePayload
     config: ConfigModel
 
 class DebugPayload(BaseModel):

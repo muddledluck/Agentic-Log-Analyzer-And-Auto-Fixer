@@ -1,0 +1,9 @@
+{
+  "name": "alaa-example-ingest",
+  "private": true,
+  "description": "Sends a fake stack trace to the SaaS webhook (local testing only). No npm deps.",
+  "type": "commonjs",
+  "scripts": {
+    "send": "node index.js"
+  }
+}
